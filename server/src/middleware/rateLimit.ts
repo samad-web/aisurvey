@@ -22,3 +22,14 @@ export const surveyDraftLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many draft updates. Please try again later.' },
 });
+
+// Operator dashboard - a single browser polling for refreshes shouldn't be
+// throttled like a submission endpoint. Still IP-scoped so an unguarded
+// instance can't be scraped indefinitely.
+export const dashboardLimiter = rateLimit({
+  windowMs: HOUR_MS,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many dashboard requests. Please try again later.' },
+});

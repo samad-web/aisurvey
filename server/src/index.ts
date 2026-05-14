@@ -4,9 +4,10 @@ import helmet from 'helmet';
 import { env } from './env.js';
 import { db } from './db.js';
 import { errorHandler } from './middleware/error.js';
-import { surveyLimiter, surveyDraftLimiter } from './middleware/rateLimit.js';
+import { surveyLimiter, surveyDraftLimiter, dashboardLimiter } from './middleware/rateLimit.js';
 import { surveyRouter } from './routes/survey.routes.js';
 import { surveyDraftRouter } from './routes/survey-draft.routes.js';
+import { surveyStatsRouter } from './routes/survey-stats.routes.js';
 
 // =============================================================================
 // LexDraft Survey - standalone backend.
@@ -67,6 +68,8 @@ app.get('/api/ready', async (_req, res) => {
 // fires 30-60 PUTs across a session).
 app.use('/api/survey/drafts', surveyDraftLimiter, surveyDraftRouter);
 app.use('/api/survey',        surveyLimiter,      surveyRouter);
+// Operator dashboard - aggregated, no PII, gated by DASHBOARD_KEY.
+app.use('/api/dashboard',     dashboardLimiter,   surveyStatsRouter);
 
 app.use(errorHandler);
 
