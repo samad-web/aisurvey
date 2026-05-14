@@ -28,13 +28,18 @@ export interface NonPiiResponse {
   drafting: string[];
   storage: string[];
   caseMgmt: string | null;
+  caseMgmtSpec: string | null;
   efile: string[];
+  painOpen: string;
   rankings: string[];
   hurdle: string[];
   adminHours: string;
   aiUsage: string;
   aiTools: string[];
   stopReason: string[];
+  aiWants: string;
+  aiWish: string | null;
+  firmDepartments: string | null;
   spend: string;
   willPay: string;
   pricingModel: string[];
@@ -350,3 +355,235 @@ export function aggregate(rows: NonPiiResponse[], opts: {
     total:      rows.length,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Pairwise count matrix - the data behind a heatmap cell.
+//
+// Each pair has a row field and a column field. We support:
+//   - single × single   e.g. firmSize × aiUsage
+//   - single × array    e.g. firmSize × pricingModel (one row contributes
+//                       to multiple cells along the column axis)
+//   - array × single    symmetric to above
+//   - array × array     e.g. practice × aiTools (cross-product per row)
+//
+// `rowOrder` / `colOrder` come from the caller so heatmaps can pin axes
+// in a meaningful order (cohort low-to-high, Likert least-to-most, etc).
+// ---------------------------------------------------------------------------
+
+export interface PairMatrix {
+  rowField: string;
+  colField: string;
+  rowKeys: string[];
+  colKeys: string[];
+  /** counts[i][j] = number of responses where rowKeys[i] AND colKeys[j] both apply. */
+  counts: number[][];
+  rowTotals: number[];
+  colTotals: number[];
+  total: number;
+}
+
+export function computePair(
+  rows: NonPiiResponse[],
+  rowField: string,
+  colField: string,
+  opts?: { rowOrder?: string[]; colOrder?: string[]; topNCols?: number; topNRows?: number },
+): PairMatrix {
+  const rMeta = FIELD_META[rowField];
+  const cMeta = FIELD_META[colField];
+  if (!rMeta || !cMeta) {
+    return { rowField, colField, rowKeys: [], colKeys: [], counts: [], rowTotals: [], colTotals: [], total: 0 };
+  }
+
+  // First pass: discover unique row/col values + raw counts in a 2-level Map.
+  const cells = new Map<string, Map<string, number>>();
+  const rowSeen = new Map<string, number>();
+  const colSeen = new Map<string, number>();
+  let total = 0;
+
+  const valsOf = (r: NonPiiResponse, meta: typeof rMeta): string[] => {
+    const v = r[meta.field];
+    if (meta.kind === 'single') {
+      return typeof v === 'string' && v.length > 0 ? [v] : [];
+    }
+    return Array.isArray(v) ? (v as string[]) : [];
+  };
+
+  for (const r of rows) {
+    const rVals = valsOf(r, rMeta);
+    const cVals = valsOf(r, cMeta);
+    if (rVals.length === 0 || cVals.length === 0) continue;
+    total++;
+    for (const rv of rVals) rowSeen.set(rv, (rowSeen.get(rv) ?? 0) + 1);
+    for (const cv of cVals) colSeen.set(cv, (colSeen.get(cv) ?? 0) + 1);
+    for (const rv of rVals) {
+      let inner = cells.get(rv);
+      if (!inner) { inner = new Map(); cells.set(rv, inner); }
+      for (const cv of cVals) {
+        inner.set(cv, (inner.get(cv) ?? 0) + 1);
+      }
+    }
+  }
+
+  // Order rows + cols. Honour caller-specified order; otherwise sort by total desc.
+  const orderBy = (seen: Map<string, number>, fixed: string[] | undefined, topN: number | undefined) => {
+    let keys: string[];
+    if (fixed) keys = fixed.filter((k) => seen.has(k));
+    else keys = [...seen.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    if (topN) keys = keys.slice(0, topN);
+    return keys;
+  };
+  const rowKeys = orderBy(rowSeen, opts?.rowOrder, opts?.topNRows);
+  const colKeys = orderBy(colSeen, opts?.colOrder, opts?.topNCols);
+
+  const counts: number[][] = rowKeys.map((rk) =>
+    colKeys.map((ck) => cells.get(rk)?.get(ck) ?? 0),
+  );
+  const rowTotals = counts.map((row) => row.reduce((a, b) => a + b, 0));
+  const colTotals = colKeys.map((_, j) => counts.reduce((a, row) => a + row[j]!, 0));
+
+  return { rowField, colField, rowKeys, colKeys, counts, rowTotals, colTotals, total };
+}
+
+// ---------------------------------------------------------------------------
+// Top-opportunities score.
+//
+// For each "rankings" task slug, derive:
+//   weight       = sum across rows of (3 / 2 / 1 by rank position)
+//                  Same as the rankingsWeighted bucket on the main aggregator.
+//   weightShare  = weight / total weight  -> 0..1, "how dominant this pain is"
+//   willPayPct   = avg cohort-normalised willPay percentile among respondents
+//                  whose top-3 includes this slug
+//   score        = weightShare × willPayPct
+//
+// All three are 0..1 so the table reads as percentages and the sort is
+// monotonically increasing in "actually-paying demand for this pain".
+// ---------------------------------------------------------------------------
+
+export interface Opportunity {
+  task: string;        // slug
+  weight: number;
+  weightShare: number;
+  willPayPct: number;
+  score: number;
+  pickers: number;     // # of respondents whose top-3 includes this task
+}
+
+export function computeOpportunities(
+  rows: NonPiiResponse[],
+  willPayOrderByCohort: Record<Cohort, string[]>,
+): Opportunity[] {
+  const weights = new Map<string, number>();
+  const willPaySums = new Map<string, number>();
+  const pickers = new Map<string, number>();
+
+  const willPayPctOf = (r: NonPiiResponse): number => {
+    const order = willPayOrderByCohort[r.firmSize];
+    if (!order || order.length === 0) return 0;
+    const idx = order.indexOf(r.willPay);
+    if (idx < 0) return 0; // unrecognised slug (e.g. legacy)
+    return (idx + 0.5) / order.length; // mid-bucket percentile
+  };
+
+  for (const r of rows) {
+    if (r.rankings.length === 0) continue;
+    const wp = willPayPctOf(r);
+    for (let i = 0; i < r.rankings.length && i < 3; i++) {
+      const slug = r.rankings[i]!;
+      const w = 3 - i;
+      weights.set(slug, (weights.get(slug) ?? 0) + w);
+      willPaySums.set(slug, (willPaySums.get(slug) ?? 0) + wp);
+      pickers.set(slug, (pickers.get(slug) ?? 0) + 1);
+    }
+  }
+
+  const totalWeight = [...weights.values()].reduce((a, b) => a + b, 0);
+  const out: Opportunity[] = [];
+  for (const [task, weight] of weights.entries()) {
+    const pickerCount = pickers.get(task) ?? 0;
+    const willPayPct = pickerCount > 0 ? (willPaySums.get(task) ?? 0) / pickerCount : 0;
+    const weightShare = totalWeight > 0 ? weight / totalWeight : 0;
+    out.push({
+      task,
+      weight,
+      weightShare,
+      willPayPct,
+      score: weightShare * willPayPct,
+      pickers: pickerCount,
+    });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+// ---------------------------------------------------------------------------
+// Cohort sankey flows: cohort -> aiUsage -> willPayTier
+//
+// willPay tiers are normalised across cohorts (Low / Mid / High based on the
+// cohort's own bucket order) so the sankey's third column has 3 stable
+// nodes rather than the 24+ raw slugs.
+// ---------------------------------------------------------------------------
+
+export type WillPayTier = 'Low' | 'Mid' | 'High';
+
+export function willPayTier(slug: string, cohort: Cohort, orderByCohort: Record<Cohort, string[]>): WillPayTier {
+  const order = orderByCohort[cohort] ?? [];
+  if (order.length === 0) return 'Mid';
+  const idx = order.indexOf(slug);
+  if (idx < 0) return 'Mid';
+  const pct = (idx + 0.5) / order.length;
+  if (pct < 1 / 3) return 'Low';
+  if (pct < 2 / 3) return 'Mid';
+  return 'High';
+}
+
+export interface SankeyData {
+  nodes: { name: string }[];
+  links: { source: number; target: number; value: number }[];
+}
+
+export function computeSankey(
+  rows: NonPiiResponse[],
+  willPayOrderByCohort: Record<Cohort, string[]>,
+  cohortLabels: Record<Cohort, string>,
+): SankeyData {
+  const COHORTS: Cohort[] = ['solo', 'small', 'medium', 'large'];
+  const AI_USES = ['daily', 'weekly', 'occasional', 'stopped', 'never', 'unsure'];
+  const TIERS: WillPayTier[] = ['Low', 'Mid', 'High'];
+
+  // Build node index. Layout left-to-right: cohorts | aiUsage | tier.
+  const nodes: { name: string }[] = [];
+  const idx = new Map<string, number>();
+  const push = (key: string, label: string) => {
+    if (idx.has(key)) return;
+    idx.set(key, nodes.length);
+    nodes.push({ name: label });
+  };
+  for (const c of COHORTS) push(`c:${c}`, cohortLabels[c]);
+  // aiUsage labels: title-case for readability.
+  const aiUsageLabel: Record<string, string> = {
+    daily: 'AI daily', weekly: 'AI weekly', occasional: 'AI occasional',
+    stopped: 'AI stopped', never: 'AI never', unsure: 'AI unsure',
+  };
+  for (const u of AI_USES) push(`u:${u}`, aiUsageLabel[u] ?? u);
+  for (const t of TIERS) push(`t:${t}`, `${t} willingness`);
+
+  const linkMap = new Map<string, number>();
+  const bumpLink = (sk: string, tk: string) => {
+    const s = idx.get(sk); const t = idx.get(tk);
+    if (s === undefined || t === undefined) return;
+    const key = `${s}->${t}`;
+    linkMap.set(key, (linkMap.get(key) ?? 0) + 1);
+  };
+
+  for (const r of rows) {
+    bumpLink(`c:${r.firmSize}`, `u:${r.aiUsage}`);
+    bumpLink(`u:${r.aiUsage}`, `t:${willPayTier(r.willPay, r.firmSize, willPayOrderByCohort)}`);
+  }
+
+  const links: SankeyData['links'] = [];
+  for (const [key, value] of linkMap.entries()) {
+    const [s, t] = key.split('->').map((n) => Number(n));
+    links.push({ source: s!, target: t!, value });
+  }
+  return { nodes, links };
+}
+

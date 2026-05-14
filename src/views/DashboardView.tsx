@@ -16,6 +16,7 @@ import {
   Radar,
   RadarChart,
   ResponsiveContainer,
+  Sankey,
   Tooltip,
   XAxis,
   YAxis,
@@ -37,10 +38,17 @@ import {
   FIELD_META,
   aggregate,
   applyFilters,
+  computeOpportunities,
+  computePair,
+  computeSankey,
   type FilterMap,
   type NonPiiResponse,
+  type Opportunity,
+  type PairMatrix,
   type RecomputedAggregates,
+  type SankeyData,
 } from '@/lib/dashboard-aggregate';
+import { COHORT_LABELS } from '@/lib/survey-questions';
 import { DateRangePicker, type DateRangeValue } from '@/components/dashboard/DateRangePicker';
 
 // =============================================================================
@@ -326,9 +334,10 @@ function DashboardContent({ dashboardKey, onSignOut }: {
   }, [dashboardKey, range.from, range.to]);
 
   // ---- Filtered + recomputed aggregates -----
-  const effective: (RecomputedAggregates & { filteredTotal: number }) | null = useMemo(() => {
+  const effective: (RecomputedAggregates & { filteredTotal: number; filteredRows: NonPiiResponse[] }) | null = useMemo(() => {
     if (!raw) return null;
     const hasFilter = Object.keys(filters).length > 0;
+    const filteredRows = hasFilter ? applyFilters(raw.rows, filters) : raw.rows;
     if (!hasFilter) {
       // Use server-side aggregates as-is. Cheap path.
       return {
@@ -362,15 +371,15 @@ function DashboardContent({ dashboardKey, onSignOut }: {
         timeseries: raw.timeseries,
         total: raw.responses.total,
         filteredTotal: raw.responses.total,
+        filteredRows,
       };
     }
     // Hot path: re-aggregate over the filtered subset.
-    const filteredRows = applyFilters(raw.rows, filters);
     const agg = aggregate(filteredRows, {
       from: range.from ?? undefined,
       to:   range.to   ?? undefined,
     });
-    return { ...agg, filteredTotal: filteredRows.length };
+    return { ...agg, filteredTotal: filteredRows.length, filteredRows };
   }, [raw, filters, range]);
 
   if (loading && !raw) {
@@ -637,7 +646,7 @@ function prettyFieldName(k: string): string {
 
 function KpiRow({ stats, effective }: {
   stats: DashboardStats;
-  effective: RecomputedAggregates & { filteredTotal: number };
+  effective: RecomputedAggregates & { filteredTotal: number; filteredRows: NonPiiResponse[] };
 }) {
   const r = stats.responses;
   const total = effective.filteredTotal;
@@ -696,7 +705,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
 
 interface LayoutProps {
   stats: DashboardStats;
-  effective: RecomputedAggregates & { filteredTotal: number };
+  effective: RecomputedAggregates & { filteredTotal: number; filteredRows: NonPiiResponse[] };
   filters: FilterMap;
   category: Category;
   onFilter: (key: string, slug: string) => void;
@@ -786,8 +795,113 @@ function OperatorLayout({ stats, effective, filters, category, onFilter, dashboa
   const cardsRendered = (children: ReactNode[]) =>
     children.some((c) => c !== null) ? children : <EmptyCategory />;
 
+  // ---- Derived insight aggregates (recompute when filter changes) ----
+  const opportunities = useMemo(
+    () => computeOpportunities(effective.filteredRows, WILL_PAY_ORDER_BY_COHORT),
+    [effective.filteredRows],
+  );
+  const sankey = useMemo(
+    () => computeSankey(effective.filteredRows, WILL_PAY_ORDER_BY_COHORT, COHORT_LABELS),
+    [effective.filteredRows],
+  );
+  const pairs = useMemo(() => ({
+    firmSizeAiUsage: computePair(effective.filteredRows, 'firmSize', 'aiUsage', {
+      rowOrder: COHORT_ORDER,
+      colOrder: AI_USAGE_ORDER,
+    }),
+    firmSizeWillPay: computePair(effective.filteredRows, 'firmSize', 'willPay', {
+      rowOrder: COHORT_ORDER,
+      topNCols: 8,
+    }),
+    practiceAiTools: computePair(effective.filteredRows, 'practice', 'aiTools', {
+      topNRows: 8,
+      topNCols: 8,
+    }),
+    yearsSwitching: computePair(effective.filteredRows, 'years', 'switching', {
+      rowOrder: YEARS_ORDER,
+    }),
+    concernCohort: computePair(effective.filteredRows, 'concern', 'firmSize', {
+      colOrder: COHORT_ORDER,
+      topNRows: 8,
+    }),
+  }), [effective.filteredRows]);
+
   return (
     <>
+      {/* INSIGHTS - decision-useful derived views, top of the page */}
+      <Section title="Insights" eyebrow="Decision support">
+        <div style={chartGrid({ minCol: 320 })}>
+          <ChartCard
+            title="Top opportunities"
+            subtitle="Pain weight × willingness-to-pay → build-priority score"
+            category="practice"
+            activeCategory={category}
+            span={2}
+          >
+            <TopOpportunities opportunities={opportunities} />
+          </ChartCard>
+          <ChartCard
+            title="Voice of the customer"
+            subtitle="Verbatim answers from the open-text fields"
+            category="practice"
+            activeCategory={category}
+            span={2}
+          >
+            <FreeTextPanel rows={effective.filteredRows} />
+          </ChartCard>
+          <ChartCard
+            title="Cohort → AI usage → Willingness flow"
+            subtitle="Where each cohort lands on AI adoption and price tier"
+            category="pricing"
+            activeCategory={category}
+            span={2}
+          >
+            <CohortSankey data={sankey} />
+          </ChartCard>
+        </div>
+      </Section>
+
+      {/* CORRELATIONS - 5 pairwise heatmaps from the original spec */}
+      <Section title="Correlations" eyebrow="Joint distributions">
+        <div style={chartGrid({ minCol: 360 })}>
+          <ChartCard title="Firm size × AI usage" subtitle="Adoption by cohort" category="tools" activeCategory={category}>
+            <Heatmap
+              pair={pairs.firmSizeAiUsage}
+              rowLabelFn={(s) => cohortLabel(s as Cohort)}
+              colLabelFn={(s) => labelFor('aiUsage', s)}
+            />
+          </ChartCard>
+          <ChartCard title="Firm size × Willingness to pay" subtitle="Where the money is" category="pricing" activeCategory={category}>
+            <Heatmap
+              pair={pairs.firmSizeWillPay}
+              rowLabelFn={(s) => cohortLabel(s as Cohort)}
+              colLabelFn={(s) => labelFor('willPay', s)}
+            />
+          </ChartCard>
+          <ChartCard title="Practice × AI tools" subtitle="Which practices use what" category="tools" activeCategory={category}>
+            <Heatmap
+              pair={pairs.practiceAiTools}
+              rowLabelFn={(s) => labelFor('practice', s)}
+              colLabelFn={(s) => labelFor('aiTools', s)}
+            />
+          </ChartCard>
+          <ChartCard title="Years × Switching willingness" subtitle="Experience vs flexibility" category="pricing" activeCategory={category}>
+            <Heatmap
+              pair={pairs.yearsSwitching}
+              rowLabelFn={(s) => labelFor('years', s)}
+              colLabelFn={(s) => labelFor('switching', s)}
+            />
+          </ChartCard>
+          <ChartCard title="Concerns × Cohort" subtitle="Who blocks on what" category="concerns" activeCategory={category}>
+            <Heatmap
+              pair={pairs.concernCohort}
+              rowLabelFn={(s) => labelFor('concern', s)}
+              colLabelFn={(s) => cohortLabel(s as Cohort)}
+            />
+          </ChartCard>
+        </div>
+      </Section>
+
       {/* FUNNEL */}
       <Section title="Funnel" eyebrow="Engagement">
         <div style={chartGrid({ minCol: 320 })}>
@@ -1331,9 +1445,39 @@ function PurgeConfirmModal({
 
 function CEOLayout({ effective, filters, category, onFilter }: LayoutProps) {
   const total = effective.filteredTotal;
+  const opportunities = useMemo(
+    () => computeOpportunities(effective.filteredRows, WILL_PAY_ORDER_BY_COHORT),
+    [effective.filteredRows],
+  );
+  const sankey = useMemo(
+    () => computeSankey(effective.filteredRows, WILL_PAY_ORDER_BY_COHORT, COHORT_LABELS),
+    [effective.filteredRows],
+  );
   return (
     <>
       <CEOKpis effective={effective} />
+      <Section title="Build priorities" eyebrow="CEO view">
+        <div style={chartGrid({ minCol: 360 })}>
+          <ChartCard
+            title="Top opportunities"
+            subtitle="Pain weight × willingness-to-pay → build-priority score"
+            category="practice"
+            activeCategory={category}
+            span={2}
+          >
+            <TopOpportunities opportunities={opportunities} />
+          </ChartCard>
+          <ChartCard
+            title="Cohort → AI usage → Willingness flow"
+            subtitle="Where each cohort lands on AI adoption and price tier"
+            category="pricing"
+            activeCategory={category}
+            span={2}
+          >
+            <CohortSankey data={sankey} />
+          </ChartCard>
+        </div>
+      </Section>
       <Section title="Strategy snapshot" eyebrow="CEO view">
         <div style={chartGrid({ minCol: 320 })}>
           <ChartCard title="Firm size cohort" subtitle="TAM proxy: solo + small share" category="audience" activeCategory={category}>
@@ -1361,7 +1505,7 @@ function CEOLayout({ effective, filters, category, onFilter }: LayoutProps) {
   );
 }
 
-function CEOKpis({ effective }: { effective: RecomputedAggregates & { filteredTotal: number } }) {
+function CEOKpis({ effective }: { effective: RecomputedAggregates & { filteredTotal: number; filteredRows: NonPiiResponse[] } }) {
   const total = effective.filteredTotal;
   // % "would recommend ≥ 8/10" — approximated as very-likely + likely
   const positive = effective.recommended
@@ -1426,7 +1570,7 @@ function CFOLayout({ effective, filters, category, onFilter }: LayoutProps) {
   );
 }
 
-function CFOKpis({ effective }: { effective: RecomputedAggregates & { filteredTotal: number } }) {
+function CFOKpis({ effective }: { effective: RecomputedAggregates & { filteredTotal: number; filteredRows: NonPiiResponse[] } }) {
   // "Top spend / will-pay bucket per cohort" + top pricing slug + % switch
   const topPricing = effective.pricingModel[0]?.value;
   const wouldSwitch = effective.switching
@@ -1505,7 +1649,7 @@ function CTOLayout({ effective, filters, category, onFilter }: LayoutProps) {
   );
 }
 
-function CTOKpis({ effective }: { effective: RecomputedAggregates & { filteredTotal: number } }) {
+function CTOKpis({ effective }: { effective: RecomputedAggregates & { filteredTotal: number; filteredRows: NonPiiResponse[] } }) {
   const total = effective.filteredTotal;
   const aiActive = effective.aiUsage
     .filter((b) => b.value === 'daily' || b.value === 'weekly')
@@ -1566,7 +1710,7 @@ function InvestorLayout({ stats, effective, filters, category, onFilter }: Layou
 
 function InvestorKpis({ stats, effective }: {
   stats: DashboardStats;
-  effective: RecomputedAggregates & { filteredTotal: number };
+  effective: RecomputedAggregates & { filteredTotal: number; filteredRows: NonPiiResponse[] };
 }) {
   const total = effective.filteredTotal;
   return (
@@ -2029,6 +2173,338 @@ function FollowUpBars({ followUps, total }: {
     { value: 'founder',     label: 'Founder call',    count: followUps.founderYes },
   ];
   return <HorizontalBars data={data} total={total} height={220} />;
+}
+
+// ---- FreeTextPanel ---------------------------------------------------------
+//
+// Voice-of-the-customer: shows the actual prose answers to the three open
+// questions (`painOpen`, `aiWants`, `aiWish`) plus the smaller textareas
+// (`firmDepartments`, `caseMgmtSpec`). Tabs above, scrollable list of
+// quotes below, each tagged with cohort + role for context. Rows already
+// filter via cross-filter chips so e.g. picking cohort=solo on the donut
+// shrinks this panel to solo respondents only.
+
+type QuoteField = 'painOpen' | 'aiWants' | 'aiWish' | 'firmDepartments' | 'caseMgmtSpec';
+
+interface QuoteTab { value: QuoteField; label: string; prompt: string }
+const QUOTE_TABS: QuoteTab[] = [
+  { value: 'painOpen',        label: 'Pain points',  prompt: 'Most repetitive or frustrating tasks' },
+  { value: 'aiWants',         label: 'Wanted',       prompt: 'AI features that would be most valuable' },
+  { value: 'aiWish',          label: 'Wish-list',    prompt: 'A feature you wish existed but does not' },
+  { value: 'firmDepartments', label: 'Departments',  prompt: 'Top departments by headcount (firm cohorts only)' },
+  { value: 'caseMgmtSpec',    label: 'Case-mgmt',    prompt: 'Specific case-management software in use' },
+];
+
+function FreeTextPanel({ rows }: { rows: NonPiiResponse[] }) {
+  const [active, setActive] = useState<QuoteField>('painOpen');
+  const tab = QUOTE_TABS.find((t) => t.value === active)!;
+
+  const quotes = useMemo(() => {
+    return rows
+      .map((r) => {
+        const text = r[active];
+        if (typeof text !== 'string' || text.trim() === '') return null;
+        return {
+          text: text.trim(),
+          cohort: r.firmSize,
+          role: r.role,
+          submittedAt: r.submittedAt,
+        };
+      })
+      .filter((q): q is NonNullable<typeof q> => q !== null)
+      .slice(0, 50);
+  }, [rows, active]);
+
+  return (
+    <div>
+      <div className="pill-nav" style={{ marginBottom: 14 }}>
+        {QUOTE_TABS.map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            className={active === t.value ? 'active' : ''}
+            onClick={() => setActive(t.value)}
+            style={{
+              background: active === t.value ? 'var(--text-primary)' : 'transparent',
+              color: active === t.value ? 'var(--bg-base)' : 'var(--text-secondary)',
+              fontSize: 12,
+              padding: '6px 12px',
+            }}
+          >
+            {t.label}
+            <span style={{ marginLeft: 6, color: active === t.value ? 'var(--text-tertiary)' : 'var(--text-tertiary)', fontSize: 10 }}>
+              ({rows.filter((r) => typeof r[t.value] === 'string' && (r[t.value] as string).trim() !== '').length})
+            </span>
+          </button>
+        ))}
+      </div>
+      <p className="body-sm" style={{ color: 'var(--text-tertiary)', marginBottom: 12 }}>{tab.prompt}</p>
+      {quotes.length === 0 ? (
+        <Placeholder label="No quotes in this slice" />
+      ) : (
+        <div style={{ maxHeight: 420, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingRight: 4 }}>
+          {quotes.map((q, i) => (
+            <article
+              key={`${q.submittedAt}-${i}`}
+              style={{
+                background: 'var(--bg-surface-2)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: '12px 14px',
+              }}
+            >
+              <p className="body-sm" style={{ color: 'var(--text-primary)', whiteSpace: 'pre-wrap', marginBottom: 8 }}>
+                "{q.text}"
+              </p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="badge">{cohortLabel(q.cohort)}</span>
+                <span className="badge">{labelFor('role', q.role)}</span>
+                <span className="mono" style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
+                  {new Date(q.submittedAt).toLocaleDateString()}
+                </span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Heatmap ---------------------------------------------------------------
+//
+// Hand-rolled SVG grid - recharts doesn't ship a heatmap. Each cell's fill
+// is row-relative (the darkest in each row is the max for that row, lighter
+// shades down to near-white for 0). Tooltip on hover shows raw count + row %.
+// Uses the existing SHADES palette so we don't introduce a new colour ramp.
+
+function Heatmap({ pair, rowLabelFn, colLabelFn, height = 260 }: {
+  pair: PairMatrix;
+  rowLabelFn: (slug: string) => string;
+  colLabelFn: (slug: string) => string;
+  height?: number;
+}) {
+  const [hover, setHover] = useState<{ i: number; j: number } | null>(null);
+  if (pair.rowKeys.length === 0 || pair.colKeys.length === 0) {
+    return <Placeholder label="No data" />;
+  }
+  const colW = 60;
+  const rowH = 32;
+  const labelW = 130;
+  const labelH = 60;
+  const gridW = labelW + pair.colKeys.length * colW;
+  const gridH = labelH + pair.rowKeys.length * rowH;
+
+  // Cell colour scale: 0 -> SHADES[last], rowMax -> SHADES[0]
+  const shadeFor = (i: number, j: number): string => {
+    const max = pair.rowTotals[i] ?? 0;
+    if (max === 0) return SHADES[SHADES.length - 1]!;
+    const share = (pair.counts[i]![j] ?? 0) / max;
+    if (share === 0) return SHADES[SHADES.length - 1]!;
+    const idx = Math.min(SHADES.length - 1, Math.max(0, Math.round((1 - share) * (SHADES.length - 1))));
+    return SHADES[idx]!;
+  };
+
+  return (
+    <div style={{ overflowX: 'auto', position: 'relative' }}>
+      <svg width={gridW} height={Math.max(height, gridH)} role="img" aria-label="Heatmap">
+        {/* Column labels (rotated) */}
+        {pair.colKeys.map((ck, j) => (
+          <g key={`col-${ck}`} transform={`translate(${labelW + j * colW + colW / 2}, ${labelH - 6})`}>
+            <text
+              transform="rotate(-35)"
+              textAnchor="end"
+              style={{ fontFamily: 'var(--font-sans)', fontSize: 11, fill: 'var(--text-secondary)' }}
+            >
+              {truncate(colLabelFn(ck), 18)}
+            </text>
+          </g>
+        ))}
+        {/* Row labels */}
+        {pair.rowKeys.map((rk, i) => (
+          <text
+            key={`row-${rk}`}
+            x={labelW - 8}
+            y={labelH + i * rowH + rowH / 2 + 4}
+            textAnchor="end"
+            style={{ fontFamily: 'var(--font-sans)', fontSize: 12, fill: 'var(--text-secondary)' }}
+          >
+            {truncate(rowLabelFn(rk), 16)}
+          </text>
+        ))}
+        {/* Cells */}
+        {pair.rowKeys.map((_, i) =>
+          pair.colKeys.map((_, j) => {
+            const count = pair.counts[i]![j] ?? 0;
+            const rowTotal = pair.rowTotals[i] ?? 0;
+            const isHover = hover?.i === i && hover?.j === j;
+            return (
+              <g
+                key={`cell-${i}-${j}`}
+                onMouseEnter={() => setHover({ i, j })}
+                onMouseLeave={() => setHover(null)}
+              >
+                <rect
+                  x={labelW + j * colW + 1}
+                  y={labelH + i * rowH + 1}
+                  width={colW - 2}
+                  height={rowH - 2}
+                  rx={3}
+                  fill={shadeFor(i, j)}
+                  stroke={isHover ? 'var(--text-primary)' : 'transparent'}
+                  strokeWidth={isHover ? 2 : 0}
+                />
+                <text
+                  x={labelW + j * colW + colW / 2}
+                  y={labelH + i * rowH + rowH / 2 + 4}
+                  textAnchor="middle"
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    fill: count > 0 && rowTotal > 0 && count / rowTotal > 0.5 ? 'var(--bg-base)' : 'var(--text-primary)',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {count}
+                </text>
+              </g>
+            );
+          }),
+        )}
+      </svg>
+      {hover && pair.counts[hover.i] && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '6px 10px',
+            fontSize: 12,
+            color: 'var(--text-primary)',
+            boxShadow: 'var(--shadow-popover)',
+            pointerEvents: 'none',
+          }}
+        >
+          <strong>{rowLabelFn(pair.rowKeys[hover.i]!)}</strong>
+          {' × '}
+          <strong>{colLabelFn(pair.colKeys[hover.j]!)}</strong>
+          <br />
+          {pair.counts[hover.i]![hover.j]} ({pair.rowTotals[hover.i]! > 0
+            ? `${Math.round((pair.counts[hover.i]![hover.j]! / pair.rowTotals[hover.i]!) * 100)}% of row`
+            : '—'})
+        </div>
+      )}
+    </div>
+  );
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+// ---- TopOpportunities ------------------------------------------------------
+//
+// Derived "build priority" score per ranked-task slug:
+//   weightShare = sum(rank-weight 3/2/1) / total weight  → 0..1
+//   willPayPct  = avg of cohort-normalised willPay percentile of pickers
+//   score       = weightShare × willPayPct               → 0..1
+// Rendered as a sortable table with three columns visualised as inline bars.
+
+function TopOpportunities({ opportunities }: { opportunities: Opportunity[] }) {
+  if (opportunities.length === 0) return <Placeholder label="No rankings data" />;
+  const top = opportunities.slice(0, 12);
+  const maxScore = top[0]?.score ?? 1;
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th style={{ width: '36%' }}>Task</th>
+            <th style={{ width: '14%' }}>Pickers</th>
+            <th style={{ width: '20%' }}>Pain weight</th>
+            <th style={{ width: '20%' }}>Avg ₹ willingness</th>
+            <th style={{ width: '10%' }}>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {top.map((o) => (
+            <tr key={o.task}>
+              <td>{labelFor('rankings', o.task)}</td>
+              <td className="mono" style={{ fontSize: 12 }}>{o.pickers}</td>
+              <td><InlineBar value={o.weightShare} max={1} display={`${Math.round(o.weightShare * 100)}%`} /></td>
+              <td><InlineBar value={o.willPayPct} max={1} display={`${Math.round(o.willPayPct * 100)}%`} /></td>
+              <td>
+                <InlineBar
+                  value={o.score}
+                  max={Math.max(maxScore, 0.001)}
+                  display={(o.score * 100).toFixed(1)}
+                  accent
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function InlineBar({ value, max, display, accent }: {
+  value: number; max: number; display: string; accent?: boolean;
+}) {
+  const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{
+        flex: 1,
+        height: 6,
+        background: 'var(--bg-surface-2)',
+        borderRadius: 'var(--radius-full)',
+        overflow: 'hidden',
+        minWidth: 50,
+      }}>
+        <div style={{
+          width: `${pct}%`,
+          height: '100%',
+          background: accent ? 'var(--text-primary)' : '#404040',
+        }} />
+      </div>
+      <span className="mono" style={{ fontSize: 11, minWidth: 36, textAlign: 'right', color: 'var(--text-secondary)' }}>
+        {display}
+      </span>
+    </div>
+  );
+}
+
+// ---- CohortSankey ----------------------------------------------------------
+//
+// cohort → AI usage → willingness-to-pay tier. Three columns of nodes, each
+// link's thickness = response count. Recharts Sankey is used directly with
+// a monochrome Cell-style node colour (rank-shaded if we wanted; kept solid
+// for now to keep the chart readable).
+
+function CohortSankey({ data }: { data: SankeyData }) {
+  if (data.links.length === 0) return <Placeholder label="No data" />;
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <Sankey
+        data={data}
+        nodePadding={20}
+        nodeWidth={10}
+        margin={{ left: 4, right: 100, top: 8, bottom: 8 }}
+        link={{ stroke: '#A3A3A3', strokeOpacity: 0.4 } as never}
+        node={{ fill: 'var(--text-primary)', stroke: 'var(--bg-surface)' } as never}
+      >
+        <Tooltip {...tooltipProps} formatter={fmt((v) => [v, 'Respondents'])} />
+      </Sankey>
+    </ResponsiveContainer>
+  );
 }
 
 // ---- Placeholder + shared error banner -------------------------------------

@@ -32,13 +32,18 @@ interface Row {
   drafting: string[] | null;
   storage: string[] | null;
   case_mgmt: string | null;
+  case_mgmt_spec: string | null;
   efile: string[] | null;
+  pain_open: string;
   rankings: string[] | null;
   hurdle: string[] | null;
   admin_hours: string;
   ai_usage: string;
   ai_tools: string[] | null;
   stop_reason: string[] | null;
+  ai_wants: string;
+  ai_wish: string | null;
+  firm_departments: string | null;
   spend: string;
   will_pay: string;
   pricing_model: string[] | null;
@@ -70,7 +75,14 @@ export interface TimeseriesPoint {
 }
 
 /** Camel-cased, non-PII snapshot of a single survey_responses row. The
- *  client uses this array to recompute aggregates under cross-filter. */
+ *  client uses this array to recompute aggregates under cross-filter and
+ *  to render the "voice of the customer" free-text panel.
+ *
+ *  Free-text fields (`painOpen`, `aiWants`, `aiWish`, `firmDepartments`,
+ *  `caseMgmtSpec`) are user-typed prose. The survey is anonymous so they
+ *  shouldn't contain hard PII like email/phone, but respondents may
+ *  occasionally include a firm name or location. The dashboard gate
+ *  (DASHBOARD_KEY) is what keeps this from leaking. */
 export interface NonPiiResponse {
   firmSize: Cohort;
   role: string;
@@ -84,13 +96,18 @@ export interface NonPiiResponse {
   drafting: string[];
   storage: string[];
   caseMgmt: string | null;
+  caseMgmtSpec: string | null;
   efile: string[];
+  painOpen: string;
   rankings: string[];
   hurdle: string[];
   adminHours: string;
   aiUsage: string;
   aiTools: string[];
   stopReason: string[];
+  aiWants: string;
+  aiWish: string | null;
+  firmDepartments: string | null;
   spend: string;
   willPay: string;
   pricingModel: string[];
@@ -254,9 +271,10 @@ export const surveyStatsService = {
       select
         firm_size, role, years, bar_council,
         language, forum, practice, clients,
-        research, drafting, storage, case_mgmt, efile,
-        rankings, hurdle, admin_hours,
-        ai_usage, ai_tools, stop_reason,
+        research, drafting, storage, case_mgmt, case_mgmt_spec, efile,
+        pain_open, rankings, hurdle, admin_hours,
+        ai_usage, ai_tools, stop_reason, ai_wants, ai_wish,
+        firm_departments,
         spend, will_pay, pricing_model, switching,
         concern, data_location, recommended,
         interview, beta, pilot, founder_call,
@@ -415,37 +433,42 @@ export const surveyStatsService = {
       }
 
       nonPii.push({
-        firmSize:     r.firm_size,
-        role:         r.role,
-        years:        r.years,
-        barCouncil:   r.bar_council,
-        language:     r.language     ?? [],
-        forum:        r.forum        ?? [],
-        practice:     r.practice     ?? [],
-        clients:      r.clients      ?? [],
-        research:     r.research     ?? [],
-        drafting:     r.drafting     ?? [],
-        storage:      r.storage      ?? [],
-        caseMgmt:     r.case_mgmt,
-        efile:        r.efile        ?? [],
-        rankings:     r.rankings     ?? [],
-        hurdle:       r.hurdle       ?? [],
-        adminHours:   r.admin_hours,
-        aiUsage:      r.ai_usage,
-        aiTools:      r.ai_tools     ?? [],
-        stopReason:   r.stop_reason  ?? [],
-        spend:        r.spend,
-        willPay:      r.will_pay,
-        pricingModel: r.pricing_model ?? [],
-        switching:    r.switching    ?? [],
-        concern:      r.concern      ?? [],
-        dataLocation: r.data_location,
-        recommended:  r.recommended,
-        interview:    r.interview,
-        beta:         r.beta,
-        pilot:        r.pilot,
-        founderCall:  r.founder_call,
-        submittedAt:  submittedDate.toISOString(),
+        firmSize:        r.firm_size,
+        role:            r.role,
+        years:           r.years,
+        barCouncil:      r.bar_council,
+        language:        r.language     ?? [],
+        forum:           r.forum        ?? [],
+        practice:        r.practice     ?? [],
+        clients:         r.clients      ?? [],
+        research:        r.research     ?? [],
+        drafting:        r.drafting     ?? [],
+        storage:         r.storage      ?? [],
+        caseMgmt:        r.case_mgmt,
+        caseMgmtSpec:    r.case_mgmt_spec,
+        efile:           r.efile        ?? [],
+        painOpen:        r.pain_open,
+        rankings:        r.rankings     ?? [],
+        hurdle:          r.hurdle       ?? [],
+        adminHours:      r.admin_hours,
+        aiUsage:         r.ai_usage,
+        aiTools:         r.ai_tools     ?? [],
+        stopReason:      r.stop_reason  ?? [],
+        aiWants:         r.ai_wants,
+        aiWish:          r.ai_wish,
+        firmDepartments: r.firm_departments,
+        spend:           r.spend,
+        willPay:         r.will_pay,
+        pricingModel:    r.pricing_model ?? [],
+        switching:       r.switching    ?? [],
+        concern:         r.concern      ?? [],
+        dataLocation:    r.data_location,
+        recommended:     r.recommended,
+        interview:       r.interview,
+        beta:            r.beta,
+        pilot:           r.pilot,
+        founderCall:     r.founder_call,
+        submittedAt:     submittedDate.toISOString(),
       });
     }
 
