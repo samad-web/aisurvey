@@ -15,21 +15,22 @@ import clsx from 'clsx';
 // subscriptions + pointer-event hit-testing while typing). The hover effect
 // is `duration: 0` though - i.e. an instant background colour swap - which
 // CSS `:hover` does for free at the compositor level. So we use plain divs
-// and let `.bg-boxes-cell:hover` (in globals.css) handle the paint. Cell
-// count is also trimmed - cells are fixed-size, the rest was clipped by
-// `overflow: hidden` anyway.
+// and let `.bg-boxes-cell:hover` (in globals.css) handle the paint. The
+// browser only paints the single hovered cell - even at 15k DOM nodes the
+// renderer never re-touches the rest, so cell count is back to the
+// original sizing here.
 // =============================================================================
 
 export interface BackgroundBoxesProps {
   className?: string;
-  /** Row count. Default 80 - enough to cover the skewed plane at every
-   *  viewport size we care about; further rows are clipped invisibly. */
+  /** Row count. Default 150 - matches the original Aceternity sizing so the
+   *  skewed plane covers ultrawide viewports. */
   rows?: number;
-  /** Column count. Default 30. */
+  /** Column count. Default 100. */
   cols?: number;
 }
 
-function BoxesInner({ className, rows = 80, cols = 30 }: BackgroundBoxesProps) {
+function BoxesInner({ className, rows = 150, cols = 100 }: BackgroundBoxesProps) {
   const rowArr = useMemo(() => Array.from({ length: rows }), [rows]);
   const colArr = useMemo(() => Array.from({ length: cols }), [cols]);
 
