@@ -161,9 +161,6 @@ interface FieldGroup {
 }
 
 const FIELD_GROUPS: ReadonlyArray<FieldGroup> = [
-  // Step 6 Q11 + Q12 share one screen, multi-column packs the two checkbox
-  // lists side-by-side.
-  { fields: ['research', 'drafting'] },
   // "Do you use case-mgmt software?" + the "if yes, which one?" follow-up
   // render together. caseMgmtSpec stays hidden until caseMgmt === 'yes',
   // and when it reveals it sits BELOW the radio rather than alongside it.
@@ -700,25 +697,8 @@ function StepsPager({
 // same confirmation shape.
 // =============================================================================
 
-function ThankYouPanel({
-  payload,
-}: {
-  payload: Record<string, unknown> | null;
-}) {
-  const handleDownload = () => {
-    if (!payload) return;
-    const json = JSON.stringify({ submitted_at: new Date().toISOString(), ...payload }, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `lexdraft-survey-response-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
+function ThankYouPanel(_props: { payload: Record<string, unknown> | null }) {
+  void _props; // payload no longer used since the Download button was removed
   return (
     <div style={{ textAlign: 'center' }}>
       <header style={{ marginBottom: 20 }}>
@@ -735,7 +715,6 @@ function ThankYouPanel({
         className="card-cream"
         style={{
           padding: 16,
-          marginBottom: 20,
           maxWidth: 420,
           marginLeft: 'auto',
           marginRight: 'auto',
@@ -754,14 +733,6 @@ function ThankYouPanel({
           </li>
         </ul>
       </div>
-
-      {payload && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-lg" onClick={handleDownload}>
-            Download your response
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -792,7 +763,7 @@ interface ConfettiPieceCfg {
 
 const CONFETTI_SHADES = ['#0A0A0A', '#262626', '#404040', '#737373', '#A3A3A3', '#C8C8C8'];
 
-function Confetti({ count = 70 }: { count?: number }) {
+function Confetti({ count = 160 }: { count?: number }) {
   // Respect users who've asked for reduced motion - skip the burst entirely.
   const reduced = useMemo(() => {
     if (typeof window === 'undefined') return false;
