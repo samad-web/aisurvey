@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { BackgroundBoxes } from '@/components/BackgroundBoxes';
 import { api } from '@/lib/api';
@@ -172,8 +171,6 @@ const FIELD_GROUPS: ReadonlyArray<FieldGroup> = [
 ];
 
 export function SurveyView() {
-  const navigate = useNavigate();
-
   // Restore any in-progress draft from localStorage on first mount. We do
   // this lazily inside useState initialisers so the restore is a one-time
   // boot step - never re-runs on later renders.
@@ -519,10 +516,7 @@ export function SurveyView() {
             {isWelcome && !submitted && <Welcome onStart={goNext} />}
 
             {submitted && (
-              <ThankYouPanel
-                payload={submittedPayload}
-                onHome={() => navigate('/', { replace: true })}
-              />
+              <ThankYouPanel payload={submittedPayload} />
             )}
 
             {!isWelcome && !submitted && current && (
@@ -700,10 +694,8 @@ function StepsPager({
 
 function ThankYouPanel({
   payload,
-  onHome,
 }: {
   payload: Record<string, unknown> | null;
-  onHome: () => void;
 }) {
   const handleDownload = () => {
     if (!payload) return;
@@ -748,21 +740,13 @@ function ThankYouPanel({
         </ul>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        {payload && (
+      {payload && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn-lg" onClick={handleDownload}>
             Download your response
           </button>
-        )}
-        <button
-          type="button"
-          className="btn btn-primary btn-lg"
-          onClick={onHome}
-          style={{ flex: 1, minWidth: 200 }}
-        >
-          Back to SirahDigital
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
