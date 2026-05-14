@@ -188,7 +188,14 @@ export function SurveyView() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  // `?thanks=1` jumps straight to the final screen for preview/QA without
+  // having to fill in the form. Nothing is submitted, just renders the
+  // thank-you panel (with confetti) so the design can be iterated on.
+  const previewThanks = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('thanks') === '1';
+  }, []);
+  const [submitted, setSubmitted] = useState(previewThanks);
   const [submittedPayload, setSubmittedPayload] = useState<Record<string, unknown> | null>(null);
 
   // Server-side draft id. Persisted across reloads via localStorage; null
