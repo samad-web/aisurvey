@@ -214,22 +214,23 @@ export function SurveyView() {
   // earliest moment we POST /api/survey/drafts to allocate a row).
   const draftIdRef = useRef<string | null>(restored?.id ?? null);
 
-  // Debounced sync to PUT /api/survey/drafts/:id. We schedule a single
-  // pending timer; new answer changes reset it. Captured-at-fire snapshots
-  // of state mean the in-flight PUT carries the latest values.
+  // Persist on every change. localStorage is written synchronously so a
+  // back-button press inside the 800ms debounce window doesn't lose the
+  // user's latest answer — on return, loadLocalDraft() restores them
+  // exactly where they were. The server PUT stays debounced to avoid
+  // hammering the API on every keystroke.
   const pendingTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (submitted) return; // post-submit: stop syncing
-    if (!draftIdRef.current) return; // pre-Welcome: no row to update yet
+    const id = draftIdRef.current;
+    if (!id) return; // pre-Welcome: no row to update yet
+    const body = { answers, otherTexts, currentIndex };
+    saveLocalDraft({ id, ...body });
     if (pendingTimerRef.current !== null) {
       window.clearTimeout(pendingTimerRef.current);
     }
     pendingTimerRef.current = window.setTimeout(() => {
       pendingTimerRef.current = null;
-      const id = draftIdRef.current;
-      if (!id) return;
-      const body = { answers, otherTexts, currentIndex };
-      saveLocalDraft({ id, ...body });
       // Fire-and-forget; failures don't break the survey. If the server
       // says the draft is gone (404) or errored on a stale row (500), drop
       // the id locally so the next interaction can allocate a fresh one.
