@@ -214,18 +214,20 @@ export function SurveyView() {
   // earliest moment we POST /api/survey/drafts to allocate a row).
   const draftIdRef = useRef<string | null>(restored?.id ?? null);
 
-  // Persist on every change. localStorage is written synchronously so a
-  // back-button press inside the 800ms debounce window doesn't lose the
-  // user's latest answer — on return, loadLocalDraft() restores them
-  // exactly where they were. The server PUT stays debounced to avoid
-  // hammering the API on every keystroke.
+  // Persist on every change. localStorage is written synchronously and is
+  // NOT gated by the server draft id — on mobile, the POST that allocates
+  // that id can be cut short by a background-tab kill or flaky network,
+  // and the user still expects to come back to their progress. Save with
+  // whatever id we have (empty string if the server hasn't responded yet);
+  // ensureDraft() will allocate a fresh server row on next interaction if
+  // the restored id is empty.
   const pendingTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (submitted) return; // post-submit: stop syncing
     const id = draftIdRef.current;
-    if (!id) return; // pre-Welcome: no row to update yet
     const body = { answers, otherTexts, currentIndex };
-    saveLocalDraft({ id, ...body });
+    saveLocalDraft({ id: id ?? '', ...body });
+    if (!id) return; // no server row yet — localStorage save above is enough
     if (pendingTimerRef.current !== null) {
       window.clearTimeout(pendingTimerRef.current);
     }
@@ -251,6 +253,20 @@ export function SurveyView() {
       }
     };
   }, [answers, otherTexts, currentIndex, submitted]);
+
+  // Browser back maps to the survey's Previous-question action. On each
+  // question render we push a sentinel history entry; popstate then
+  // decrements currentIndex. On the welcome screen we don't push, so the
+  // first back press from welcome leaves the site naturally.
+  useEffect(() => {
+    if (submitted || currentIndex < 0) return;
+    window.history.pushState({ surveyStep: currentIndex }, '');
+    const onPop = () => {
+      setCurrentIndex((prev) => Math.max(-1, prev - 1));
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [currentIndex, submitted]);
 
   /** Allocate the server-side draft row on the user's first interaction. */
   const ensureDraft = async (): Promise<void> => {
