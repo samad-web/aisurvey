@@ -106,6 +106,31 @@ surveyStatsRouter.delete('/data', validate({ body: PurgeBody }), async (req, res
 });
 
 // =============================================================================
+// GET /api/dashboard/respondents - paginated PII list for the operator-only
+// Respondents tab. Returns name/email/phone/city plus the cohort-setting
+// fields (role/years/firm_size). Shares the same x-dashboard-key gate.
+// =============================================================================
+
+const RespondentsQuery = z.object({
+  limit:  z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+  key:    z.string().optional(),
+});
+
+surveyStatsRouter.get('/respondents', validate({ query: RespondentsQuery }), async (req, res, next) => {
+  try {
+    if (!checkKey(req)) { unauthorized(res); return; }
+    const limit  = typeof req.query.limit  === 'string' ? Math.min(500, Math.max(1, Number(req.query.limit)))  : 100;
+    const offset = typeof req.query.offset === 'string' ? Math.max(0, Number(req.query.offset)) : 0;
+    const result = await surveyStatsService.listRespondents({ limit, offset });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
 // GET /api/dashboard/export.csv - full CSV dump of survey_responses for the
 // operator. Includes PII (email, phone, ip_address, user_agent), so it
 // shares the same x-dashboard-key gate as the rest of the dashboard.

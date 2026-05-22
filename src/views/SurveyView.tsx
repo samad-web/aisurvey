@@ -358,16 +358,31 @@ export function SurveyView() {
   // ---------------------------------------------------------------------------
 
   const buildPayload = (): Record<string, unknown> => {
-    const visibleNames = new Set(
-      visibleEntries.flatMap((e) => e.fields.map((f) => f.name)),
-    );
+    const visibleFields = new Map<string, Field>();
+    for (const entry of visibleEntries) {
+      for (const f of entry.fields) visibleFields.set(f.name, f);
+    }
     const out: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(answers)) {
-      if (!visibleNames.has(name)) continue;
+      const field = visibleFields.get(name);
+      if (!field) continue;
       if (value === undefined) continue;
-      if (typeof value === 'string' && value.trim() === '') continue;
-      if (Array.isArray(value) && value.length === 0) continue;
-      out[name] = value;
+      // Defensive: drop slugs that aren't in the field's current option
+      // set. This protects long-lived drafts from breaking if a question's
+      // options list ever shrinks or a slug is renamed between when the
+      // user started filling and when they submit.
+      let cleaned: unknown = value;
+      if (field.options) {
+        const allowed = new Set(field.options.map((o) => o.value));
+        if (Array.isArray(value)) {
+          cleaned = (value as string[]).filter((v) => allowed.has(v));
+        } else if (typeof value === 'string' && !allowed.has(value)) {
+          continue;
+        }
+      }
+      if (typeof cleaned === 'string' && cleaned.trim() === '') continue;
+      if (Array.isArray(cleaned) && cleaned.length === 0) continue;
+      out[name] = cleaned;
     }
     const otherOut: Record<string, string> = {};
     for (const entry of visibleEntries) {

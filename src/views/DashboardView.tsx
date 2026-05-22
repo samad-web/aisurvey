@@ -130,13 +130,14 @@ interface DashboardStats {
 // Role + category vocab
 // =============================================================================
 
-type Role = 'operator' | 'ceo' | 'cfo' | 'cto' | 'investor';
+type Role = 'operator' | 'ceo' | 'cfo' | 'cto' | 'investor' | 'respondents';
 const ROLES: { value: Role; label: string }[] = [
-  { value: 'operator', label: 'Operator' },
-  { value: 'ceo',      label: 'CEO' },
-  { value: 'cfo',      label: 'CFO' },
-  { value: 'cto',      label: 'CTO' },
-  { value: 'investor', label: 'Investor' },
+  { value: 'operator',    label: 'Operator' },
+  { value: 'ceo',         label: 'CEO' },
+  { value: 'cfo',         label: 'CFO' },
+  { value: 'cto',         label: 'CTO' },
+  { value: 'investor',    label: 'Investor' },
+  { value: 'respondents', label: 'Respondents' },
 ];
 
 type Category = 'all' | 'audience' | 'practice' | 'tools' | 'pricing' | 'concerns' | 'funnel';
@@ -731,11 +732,12 @@ function RoleLayout(props: LayoutProps & {
   onSignOut: () => void;
 }) {
   switch (props.view) {
-    case 'operator': return <OperatorLayout {...props} />;
-    case 'ceo':      return <CEOLayout {...props} />;
-    case 'cfo':      return <CFOLayout {...props} />;
-    case 'cto':      return <CTOLayout {...props} />;
-    case 'investor': return <InvestorLayout {...props} />;
+    case 'operator':    return <OperatorLayout {...props} />;
+    case 'ceo':         return <CEOLayout {...props} />;
+    case 'cfo':         return <CFOLayout {...props} />;
+    case 'cto':         return <CTOLayout {...props} />;
+    case 'investor':    return <InvestorLayout {...props} />;
+    case 'respondents': return <RespondentsLayout dashboardKey={props.dashboardKey} />;
   }
 }
 
@@ -2537,6 +2539,172 @@ function Placeholder({ label }: { label: string }) {
     }}>{label}</div>
   );
 }
+
+// =============================================================================
+// RespondentsLayout - PII table for the operator. Lists every submitted
+// response with name, email, phone, city, and cohort fields, paginated 100
+// per page. Reuses the dashboardKey gate (the same passcode that unlocks
+// the rest of /dashboard).
+// =============================================================================
+
+interface Respondent {
+  id: string;
+  submittedAt: string;
+  name: string;
+  email: string;
+  phone: string;
+  city: string;
+  barCouncil: string;
+  role: string;
+  years: string;
+  firmSize: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+interface RespondentsResponse {
+  total: number;
+  limit: number;
+  offset: number;
+  rows: Respondent[];
+}
+
+const PAGE_SIZE = 100;
+
+function RespondentsLayout({ dashboardKey }: { dashboardKey: string }) {
+  const [data, setData] = useState<RespondentsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    apiClient
+      .get<RespondentsResponse>('/api/dashboard/respondents', {
+        headers: { 'x-dashboard-key': dashboardKey },
+        params: { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+        validateStatus: () => true,
+      })
+      .then((r) => {
+        if (cancelled) return;
+        if (r.status >= 400) {
+          setError(`Server returned ${r.status}.`);
+          return;
+        }
+        setData(r.data);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not reach the server.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [dashboardKey, page]);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+
+  return (
+    <Section title="Respondents" eyebrow="Personal details">
+      <p className="body-sm muted" style={{ marginBottom: 12 }}>
+        Operator-only view. Includes PII collected at submission time.
+        Total: <strong>{data?.total ?? 0}</strong>.
+      </p>
+
+      {loading && <div style={{ padding: 24 }}>Loading…</div>}
+      {error && <div role="alert" style={errorBanner}>{error}</div>}
+
+      {data && !loading && !error && (
+        <>
+          <div style={{ overflowX: 'auto', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)' }}>
+            <table style={respondentsTableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Submitted</th>
+                  <th style={thStyle}>Name</th>
+                  <th style={thStyle}>Email</th>
+                  <th style={thStyle}>Phone</th>
+                  <th style={thStyle}>City</th>
+                  <th style={thStyle}>Bar Council</th>
+                  <th style={thStyle}>Role</th>
+                  <th style={thStyle}>Years</th>
+                  <th style={thStyle}>Firm size</th>
+                  <th style={thStyle}>IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.length === 0 && (
+                  <tr><td colSpan={10} style={{ padding: 16, textAlign: 'center', color: 'var(--text-tertiary)' }}>No respondents yet.</td></tr>
+                )}
+                {data.rows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={tdStyle} title={r.submittedAt}>{r.submittedAt.slice(0, 10)}</td>
+                    <td style={tdStyle}>{r.name}</td>
+                    <td style={tdStyle}><a href={`mailto:${r.email}`}>{r.email}</a></td>
+                    <td style={tdStyle}>{r.phone}</td>
+                    <td style={tdStyle}>{r.city}</td>
+                    <td style={tdStyle}>{r.barCouncil}</td>
+                    <td style={tdStyle}>{r.role}</td>
+                    <td style={tdStyle}>{r.years}</td>
+                    <td style={tdStyle}>{r.firmSize}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{r.ipAddress ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+            <span className="body-sm muted">
+              Page {page + 1} of {totalPages} · {data.rows.length} rows on this page
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className="btn"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={page + 1 >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </Section>
+  );
+}
+
+const respondentsTableStyle: CSSProperties = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  fontSize: 13,
+};
+
+const thStyle: CSSProperties = {
+  textAlign: 'left',
+  padding: '10px 12px',
+  background: 'var(--bg-surface-2)',
+  borderBottom: '1px solid var(--border-default)',
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+};
+
+const tdStyle: CSSProperties = {
+  padding: '10px 12px',
+  borderBottom: '1px solid var(--border-default)',
+  verticalAlign: 'top',
+};
 
 const pageShellStyle: CSSProperties = {
   minHeight: '100vh',

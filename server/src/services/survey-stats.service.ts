@@ -535,6 +535,83 @@ export const surveyStatsService = {
     };
   },
 
+  /** Paginated list of respondents with PII for the operator-only
+   *  Respondents table. The CSV export already returns the same data
+   *  unpaginated; this endpoint exists so the dashboard UI can render
+   *  rows without downloading the whole file. */
+  async listRespondents(opts: { limit: number; offset: number }): Promise<{
+    total: number;
+    limit: number;
+    offset: number;
+    rows: Array<{
+      id: string;
+      submittedAt: string;
+      name: string;
+      email: string;
+      phone: string;
+      city: string;
+      barCouncil: string;
+      role: string;
+      years: string;
+      firmSize: string;
+      ipAddress: string | null;
+      userAgent: string | null;
+    }>;
+  }> {
+    const sql = db();
+    if (!sql) throw new Error('Database not configured');
+
+    const totalRows = await sql<{ total: string }[]>`
+      select count(*)::text as total from survey_responses
+    `;
+    const total = Number(totalRows[0]?.total ?? 0);
+
+    const raw = await sql<Array<{
+      id: string;
+      submitted_at: Date;
+      name: string;
+      email: string;
+      phone: string;
+      city: string;
+      bar_council: string;
+      role: string;
+      years: string;
+      firm_size: string;
+      ip_address: string | null;
+      user_agent: string | null;
+    }>>`
+      select
+        id, submitted_at,
+        name, email, phone, city, bar_council,
+        role, years, firm_size,
+        host(ip_address) as ip_address, user_agent
+      from survey_responses
+      order by submitted_at desc
+      limit ${opts.limit}
+      offset ${opts.offset}
+    `;
+
+    return {
+      total,
+      limit: opts.limit,
+      offset: opts.offset,
+      rows: raw.map((r) => ({
+        id: r.id,
+        submittedAt: r.submitted_at instanceof Date ? r.submitted_at.toISOString() : String(r.submitted_at),
+        name: r.name,
+        email: r.email,
+        phone: r.phone,
+        city: r.city,
+        barCouncil: r.bar_council,
+        role: r.role,
+        years: r.years,
+        firmSize: r.firm_size,
+        ipAddress: r.ip_address,
+        userAgent: r.user_agent,
+      })),
+    };
+  },
+
   async exportCsv(): Promise<string> {
     const sql = db();
     if (!sql) throw new Error('Database not configured');
