@@ -43,7 +43,10 @@ import {
 // abandoned responses.
 // =============================================================================
 
-const DRAFT_LOCAL_KEY = 'lexdraft-survey-draft-v1';
+const DRAFT_LOCAL_KEY = 'sirah-survey-draft-v1';
+// Pre-rebrand key. loadLocalDraft() copies it to DRAFT_LOCAL_KEY on first
+// read so respondents who started under the old name don't lose progress.
+const LEGACY_DRAFT_LOCAL_KEY = 'lexdraft-survey-draft-v1';
 
 interface LocalDraft {
   id: string;
@@ -54,7 +57,15 @@ interface LocalDraft {
 
 function loadLocalDraft(): LocalDraft | null {
   try {
-    const raw = window.localStorage.getItem(DRAFT_LOCAL_KEY);
+    let raw = window.localStorage.getItem(DRAFT_LOCAL_KEY);
+    if (!raw) {
+      const legacy = window.localStorage.getItem(LEGACY_DRAFT_LOCAL_KEY);
+      if (legacy) {
+        window.localStorage.setItem(DRAFT_LOCAL_KEY, legacy);
+        window.localStorage.removeItem(LEGACY_DRAFT_LOCAL_KEY);
+        raw = legacy;
+      }
+    }
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<LocalDraft>;
     if (typeof parsed?.id !== 'string') return null;
@@ -184,6 +195,9 @@ export function SurveyView() {
   const [otherTexts, setOtherTexts] = useState<Record<string, string>>(restored?.otherTexts ?? {});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitErrorDetails, setSubmitErrorDetails] = useState<
+    Array<{ path: string; message: string }> | null
+  >(null);
   const [stepError, setStepError] = useState<string | null>(null);
   // `?thanks=1` jumps straight to the final screen for preview/QA without
   // having to fill in the form. Nothing is submitted, just renders the
@@ -361,9 +375,17 @@ export function SurveyView() {
     }
     setSubmitting(true);
     setSubmitError(null);
+    setSubmitErrorDetails(null);
     try {
       const payload = buildPayload();
-      await api.post('/survey', payload);
+      // Reuse the draft id as the idempotency key so a network retry won't
+      // create a duplicate row. Falls back to a fresh UUID for the rare
+      // case where no draft was ever allocated (user submitted without
+      // any prior auto-save firing).
+      const idempotencyKey = draftIdRef.current ?? crypto.randomUUID();
+      await api.post('/survey', payload, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      });
       // Stamp the draft as completed (best-effort; analytics-only) and clear
       // local persistence so a reload starts fresh.
       if (draftIdRef.current) {
@@ -377,10 +399,19 @@ export function SurveyView() {
       setSubmitting(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
+      const data = (err as {
+        response?: {
+          data?: {
+            error?: string;
+            details?: Array<{ path: string; message: string }>;
+          };
+        };
+      } | null)?.response?.data;
       const msg =
-        (err as { response?: { data?: { error?: string } } } | null)?.response?.data?.error
+        data?.error
         ?? (err instanceof Error ? err.message : 'Submission failed. Please try again.');
       setSubmitError(msg);
+      setSubmitErrorDetails(data?.details ?? null);
       setSubmitting(false);
     }
   };
@@ -566,7 +597,21 @@ export function SurveyView() {
                 </div>
 
                 {stepError && <ErrorBanner>{stepError}</ErrorBanner>}
-                {submitError && <ErrorBanner>{submitError}</ErrorBanner>}
+                {submitError && (
+                  <ErrorBanner>
+                    {submitError}
+                    {submitErrorDetails && submitErrorDetails.length > 0 && (
+                      <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                        {submitErrorDetails.map((d, i) => (
+                          <li key={i}>
+                            {d.path && <strong>{d.path}: </strong>}
+                            {d.message}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </ErrorBanner>
+                )}
 
                 {/* Hidden submit so Enter key advances the form */}
                 <button type="submit" style={{ display: 'none' }} aria-hidden tabIndex={-1} />

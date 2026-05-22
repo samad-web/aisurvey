@@ -13,11 +13,15 @@ apiClient.interceptors.response.use(
   (err: AxiosError<{ error?: string }>) => Promise.reject(err),
 );
 
+interface RequestConfig {
+  headers?: Record<string, string>;
+}
+
 export const api = {
   get: <T>(path: string, params?: Record<string, unknown>) =>
     apiClient.get<T>(`/api${path}`, { params }).then((r) => r.data),
-  post: <T>(path: string, body?: unknown) =>
-    apiClient.post<T>(`/api${path}`, body).then((r) => r.data),
-  put: <T>(path: string, body?: unknown) =>
-    apiClient.put<T>(`/api${path}`, body).then((r) => r.data),
+  post: <T>(path: string, body?: unknown, config?: RequestConfig) =>
+    apiClient.post<T>(`/api${path}`, body, config).then((r) => r.data),
+  put: <T>(path: string, body?: unknown, config?: RequestConfig) =>
+    apiClient.put<T>(`/api${path}`, body, config).then((r) => r.data),
 };

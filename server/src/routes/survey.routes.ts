@@ -74,7 +74,7 @@ const AiUsage = z.enum(['daily','weekly','occasional','stopped','never','unsure'
 const AiTools = z.enum([
   'chatgpt','claude','gemini','copilot','perplexity','scc-ai','manupatra-ai',
   'amicus','legitquest','vidur','bharatlaw','harvey','lexis','cocounsel',
-  'free-india','other-ai',
+  'free-india','draft-bot-pro','other-ai',
 ]);
 const StopReason = z.enum([
   'hallucination','outdated','privacy','bar-rules','court-reception','liability',
@@ -301,13 +301,20 @@ export type SurveyResponseInput = z.infer<typeof SurveyInput>;
 
 export const surveyRouter: Router = Router();
 
+// RFC 4122 UUID. Anything else is silently dropped to null so a malformed
+// header can't break submission — at worst the request loses idempotency.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 surveyRouter.post('/', validate({ body: SurveyInput }), async (req, res, next) => {
   try {
     const ipAddress = req.ip ?? null;
     const userAgent = req.header('user-agent') ?? null;
+    const rawKey = req.header('idempotency-key');
+    const idempotencyKey = rawKey && UUID_RE.test(rawKey) ? rawKey.toLowerCase() : null;
     const result = await surveyService.create(req.body as SurveyResponseInput, {
       ipAddress,
       userAgent,
+      idempotencyKey,
     });
     res.status(201).json(result);
   } catch (err) {

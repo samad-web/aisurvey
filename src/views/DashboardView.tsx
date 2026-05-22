@@ -67,7 +67,11 @@ import { DateRangePicker, type DateRangeValue } from '@/components/dashboard/Dat
 // The recompute is O(N) - well under the 100ms budget for thousands of rows.
 // =============================================================================
 
-const STORAGE_KEY = 'lexdraft-dashboard-key-v1';
+const STORAGE_KEY = 'sirah-dashboard-key-v1';
+// Pre-rebrand key. The useState initialiser below copies it to STORAGE_KEY
+// on first load so an already-authed operator isn't kicked back to the
+// passcode screen after the rename.
+const LEGACY_STORAGE_KEY = 'lexdraft-dashboard-key-v1';
 
 // ---- API types (mirrors server/src/services/survey-stats.service.ts) -------
 interface BucketStat { value: string; count: number }
@@ -165,8 +169,17 @@ export function DashboardView() {
   }
 
   const [key, setKey] = useState<string | null>(() => {
-    try { return window.localStorage.getItem(STORAGE_KEY); }
-    catch { return null; }
+    try {
+      const current = window.localStorage.getItem(STORAGE_KEY);
+      if (current) return current;
+      const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy) {
+        window.localStorage.setItem(STORAGE_KEY, legacy);
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+        return legacy;
+      }
+      return null;
+    } catch { return null; }
   });
 
   const handleAuth = (entered: string) => {
@@ -221,7 +234,7 @@ function PasscodeGate({ onUnlock }: { onUnlock: (key: string) => void }) {
           <div className="eyebrow" style={{ marginBottom: 8 }}>SirahDigital — operator</div>
           <h1 className="heading-xl" style={{ marginBottom: 8 }}>Dashboard</h1>
           <p className="body-md muted" style={{ marginBottom: 20 }}>
-            Aggregated view of the LexDraft practitioner study. No personal data is
+            Aggregated view of the Sirah Digital practitioner study. No personal data is
             shown — counts and distributions only.
           </p>
           <form onSubmit={submit}>

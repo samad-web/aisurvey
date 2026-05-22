@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { env } from '../env.js';
@@ -42,12 +43,26 @@ function unauthorized(res: import('express').Response) {
   res.status(401).json({ error: 'Unauthorized' });
 }
 
+// SHA-256 both inputs so timingSafeEqual operates on equal-length buffers
+// and the wall-clock time leaks neither the secret length nor any prefix.
+function safeEqual(a: string, b: string): boolean {
+  const aHash = createHash('sha256').update(a).digest();
+  const bHash = createHash('sha256').update(b).digest();
+  return timingSafeEqual(aHash, bHash);
+}
+
 function checkKey(req: import('express').Request): boolean {
   const expected = env.dashboardKey;
-  if (!expected) return true; // dev: open
+  if (!expected) {
+    // Fail closed outside of local development. An unset DASHBOARD_KEY in
+    // production / preview would otherwise expose the dashboard (and its
+    // DELETE-everything endpoint) publicly.
+    return env.NODE_ENV === 'development';
+  }
   const got = (req.header('x-dashboard-key') as string | undefined)
     ?? (typeof req.query.key === 'string' ? req.query.key : undefined);
-  return Boolean(got) && got === expected;
+  if (!got) return false;
+  return safeEqual(got, expected);
 }
 
 surveyStatsRouter.get('/stats', validate({ query: StatsQuery }), async (req, res, next) => {
@@ -85,6 +100,26 @@ surveyStatsRouter.delete('/data', validate({ body: PurgeBody }), async (req, res
     const result = await surveyStatsService.purgeAll();
     res.setHeader('Cache-Control', 'no-store');
     res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
+// GET /api/dashboard/export.csv - full CSV dump of survey_responses for the
+// operator. Includes PII (email, phone, ip_address, user_agent), so it
+// shares the same x-dashboard-key gate as the rest of the dashboard.
+// =============================================================================
+
+surveyStatsRouter.get('/export.csv', async (req, res, next) => {
+  try {
+    if (!checkKey(req)) { unauthorized(res); return; }
+    const csv = await surveyStatsService.exportCsv();
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="sirah-survey-${stamp}.csv"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(csv);
   } catch (err) {
     next(err);
   }

@@ -4,6 +4,10 @@ import type { SurveyResponseInput } from '../routes/survey.routes.js';
 interface InsertMeta {
   ipAddress: string | null;
   userAgent: string | null;
+  // Caller-supplied idempotency key (typically the draft id). Null when the
+  // client didn't send Idempotency-Key — that case skips the conflict check
+  // and behaves like the original insert.
+  idempotencyKey: string | null;
 }
 
 export const surveyService = {
@@ -24,7 +28,8 @@ export const surveyService = {
         spend, will_pay, pricing_model, switching,
         concern, data_location, recommended,
         interview, beta, pilot, founder_call,
-        other_texts
+        other_texts,
+        idempotency_key
       ) values (
         ${meta.ipAddress}, ${meta.userAgent},
         ${input.name}, ${input.email}, ${input.phone}, ${input.city}, ${input.barCouncil},
@@ -64,10 +69,22 @@ export const surveyService = {
         ${input.beta ?? null},
         ${input.pilot ?? null},
         ${input.founderCall ?? null},
-        ${sql.json(input.otherTexts ?? {})}
+        ${sql.json(input.otherTexts ?? {})},
+        ${meta.idempotencyKey}
       )
+      on conflict (idempotency_key) where idempotency_key is not null do nothing
       returning id
     `;
-    return rows[0]!;
+    if (rows[0]) return rows[0];
+
+    // Insert was a no-op — the same idempotency_key already exists. Return
+    // the original row's id so retries are transparent to the client.
+    if (meta.idempotencyKey) {
+      const existing = await sql<{ id: string }[]>`
+        select id from survey_responses where idempotency_key = ${meta.idempotencyKey}
+      `;
+      if (existing[0]) return existing[0];
+    }
+    throw new Error('Insert returned no row');
   },
 };

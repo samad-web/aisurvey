@@ -534,4 +534,52 @@ export const surveyStatsService = {
       recentActivity,
     };
   },
+
+  async exportCsv(): Promise<string> {
+    const sql = db();
+    if (!sql) throw new Error('Database not configured');
+    const rows = await sql<Record<string, unknown>[]>`
+      select
+        id, submitted_at, host(ip_address) as ip_address, user_agent,
+        name, email, phone, city, bar_council,
+        role, years, firm_size,
+        firm_departments, support_staff, procurement, decision, decision_solo,
+        language, forum, practice, clients,
+        research, drafting, storage, case_mgmt, case_mgmt_spec, efile,
+        pain_open, rankings, hurdle, admin_hours,
+        ai_usage, ai_tools, stop_reason, ai_wants, ai_wish,
+        spend, will_pay, pricing_model, switching,
+        concern, data_location, recommended,
+        interview, beta, pilot, founder_call,
+        other_texts, idempotency_key
+      from survey_responses
+      order by submitted_at desc
+    `;
+    return toCsv(rows);
+  },
 };
+
+// RFC 4180 escape: quote fields containing commas/quotes/newlines, double
+// internal quotes. Objects (jsonb arrays, other_texts) are JSON-stringified
+// so each cell stays one column; Date is ISO-stringified.
+function csvEscape(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  let s: string;
+  if (v instanceof Date) s = v.toISOString();
+  else if (typeof v === 'object') s = JSON.stringify(v);
+  else s = String(v);
+  if (/[",\n\r]/.test(s)) {
+    s = `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function toCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return '';
+  const headers = Object.keys(rows[0]!);
+  const lines = [headers.join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((h) => csvEscape(row[h])).join(','));
+  }
+  return lines.join('\r\n') + '\r\n';
+}

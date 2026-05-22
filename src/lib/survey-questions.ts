@@ -572,6 +572,7 @@ const STEP_8_AI: StepDef = {
         o('lexis',         'Lexis+ AI'),
         o('cocounsel',     'CoCounsel'),
         o('free-india',    'NyayGuru / KanoonGPT'),
+        o('draft-bot-pro', 'Draft Bot Pro'),
         o('other-ai',      'Other'),
       ],
     },
