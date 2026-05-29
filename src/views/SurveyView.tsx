@@ -367,18 +367,17 @@ export function SurveyView() {
       const field = visibleFields.get(name);
       if (!field) continue;
       if (value === undefined) continue;
-      // Defensive: drop slugs that aren't in the field's current option
-      // set. This protects long-lived drafts from breaking if a question's
-      // options list ever shrinks or a slug is renamed between when the
-      // user started filling and when they submit.
+      // Defensive: for multi-selects, drop slugs that aren't in the field's
+      // current option set — protects long-lived drafts if an option is
+      // removed or renamed. Only applied to arrays: dropping a single-choice
+      // value would silently turn it into a missing "Required" field (and
+      // spend/willPay inject their options per-cohort, so a naive membership
+      // check there is wrong). Single-choice values are left for the server
+      // to validate with a precise message.
       let cleaned: unknown = value;
-      if (field.options) {
+      if (Array.isArray(value) && field.options && field.options.length > 0) {
         const allowed = new Set(field.options.map((o) => o.value));
-        if (Array.isArray(value)) {
-          cleaned = (value as string[]).filter((v) => allowed.has(v));
-        } else if (typeof value === 'string' && !allowed.has(value)) {
-          continue;
-        }
+        cleaned = (value as string[]).filter((v) => allowed.has(v));
       }
       if (typeof cleaned === 'string' && cleaned.trim() === '') continue;
       if (Array.isArray(cleaned) && cleaned.length === 0) continue;
