@@ -178,6 +178,27 @@ const FIELD_GROUPS: ReadonlyArray<FieldGroup> = [
   { fields: ['caseMgmt', 'caseMgmtSpec'], layout: 'stack' },
 ];
 
+// slug -> Option lookup per field, built once from STEPS (including the
+// Step-4 cohort variants). Used to prune cohort-gated selections when the
+// respondent changes firm size.
+const OPTION_BY_FIELD: Map<string, Map<string, Option>> = (() => {
+  const m = new Map<string, Map<string, Option>>();
+  const add = (f: Field) => {
+    if (f.options) m.set(f.name, new Map(f.options.map((o) => [o.value, o])));
+  };
+  for (const step of STEPS) {
+    for (const f of step.fields) add(f);
+    for (const variant of step.variants ?? []) {
+      for (const f of variant.fields) add(f);
+    }
+  }
+  return m;
+})();
+
+// Multi-select fields that contain cohort-gated options. When firm size
+// changes we prune any selected option no longer valid for the new cohort.
+const COHORT_GATED_MULTIS = ['storage', 'rankings', 'hurdle', 'concern', 'pricingModel', 'switching'] as const;
+
 export function SurveyView() {
   // Restore any in-progress draft from localStorage on first mount. We do
   // this lazily inside useState initialisers so the restore is a one-time
@@ -376,8 +397,11 @@ export function SurveyView() {
       // to validate with a precise message.
       let cleaned: unknown = value;
       if (Array.isArray(value) && field.options && field.options.length > 0) {
-        const allowed = new Set(field.options.map((o) => o.value));
-        cleaned = (value as string[]).filter((v) => allowed.has(v));
+        const opts = field.options;
+        cleaned = (value as string[]).filter((v) => {
+          const opt = opts.find((o) => o.value === v);
+          return opt ? isOptionVisible(opt, cohort) : false;
+        });
       }
       if (typeof cleaned === 'string' && cleaned.trim() === '') continue;
       if (Array.isArray(cleaned) && cleaned.length === 0) continue;
@@ -516,7 +540,29 @@ export function SurveyView() {
   };
 
   const setAnswer = (name: string, value: AnswerValue) =>
-    setAnswers((a) => ({ ...a, [name]: value }));
+    setAnswers((a) => {
+      if (name !== 'firmSize' || a.firmSize === value) {
+        return { ...a, [name]: value };
+      }
+      // firmSize drives the cohort, which gates several later answers. Clear
+      // or prune the cohort-dependent ones so values picked under the old
+      // firm size can't fail the server's cohort checks at submit time.
+      const next: Answers = { ...a, firmSize: value };
+      const newCohort = getCohort(next);
+      delete next.spend;   // cohort-templated; slugs aren't portable
+      delete next.willPay; // cohort-templated; slugs aren't portable
+      for (const f of COHORT_GATED_MULTIS) {
+        const arr = next[f];
+        if (!Array.isArray(arr)) continue;
+        const opts = OPTION_BY_FIELD.get(f);
+        if (!opts) continue;
+        next[f] = arr.filter((slug) => {
+          const opt = opts.get(slug);
+          return opt ? isOptionVisible(opt, newCohort) : true;
+        });
+      }
+      return next;
+    });
   const setOtherText = (name: string, value: string) =>
     setOtherTexts((o) => ({ ...o, [name]: value }));
 
@@ -1461,11 +1507,22 @@ function visibleFieldsAcrossSurvey(answers: Answers): Field[] {
   return out;
 }
 
+// Options actually valid for a field given the cohort. Mirrors the render
+// path: spend/willPay inject their per-cohort lists, then option-level
+// cohort gates are applied. Used to detect stale single-choice values.
+function effectiveOptionsFor(field: Field, cohort: Cohort | null): Option[] {
+  let opts = field.options ?? [];
+  if (field.name === 'spend' && cohort) opts = SPEND_BY_COHORT[cohort];
+  if (field.name === 'willPay' && cohort) opts = WILL_PAY_BY_COHORT[cohort];
+  return opts.filter((o) => isOptionVisible(o, cohort));
+}
+
 function firstMissingRequired(
   fields: Field[],
   answers: Answers,
   otherTexts: Record<string, string>,
 ): string | null {
+  const cohort = getCohort(answers);
   for (const f of fields) {
     if (!isFieldVisible(f, answers)) continue;
     if (!f.required) continue;
@@ -1477,6 +1534,14 @@ function firstMissingRequired(
       }
     } else {
       if (v === undefined || (typeof v === 'string' && v.trim() === '')) {
+        return `Please answer "${f.prompt}".`;
+      }
+      // Present but not a valid option for the current cohort — a stale
+      // value left over from a different firm size (e.g. in a restored
+      // draft). Treat as unanswered so the user re-picks rather than
+      // hitting a server-side cohort rejection.
+      const opts = effectiveOptionsFor(f, cohort);
+      if (opts.length > 0 && typeof v === 'string' && !opts.some((o) => o.value === v)) {
         return `Please answer "${f.prompt}".`;
       }
     }
