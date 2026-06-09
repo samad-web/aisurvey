@@ -135,10 +135,10 @@ const STEP_3_PRACTICE: StepDef = {
     },
     {
       name: 'firmSize',
-      prompt: 'Firm size',
+      prompt: 'How many advocates work in your firm or chamber?',
       kind: 'radio',
       required: true,
-      helper: 'Count advocates only - exclude clerks, munshis, paralegals.',
+      helper: 'Count advocates only — do not include clerks, munshis, or paralegals.',
       options: [
         o('solo',   'Solo - only me'),
         o('small',  'Small - 2 to 10 advocates'),
@@ -158,10 +158,10 @@ const STEP_4_FIRM: StepDef = {
       fields: [
         {
           name: 'firmDepartments',
-          prompt: 'Departments or practice groups',
+          prompt: 'What are your main practice departments?',
           kind: 'textarea',
           required: false,
-          helper: 'List the top 2 to 3 by headcount, comma-separated.',
+          helper: 'List the top 2 or 3 by team size, separated by commas. For example, **Litigation, Corporate, Tax**.',
         },
         {
           name: 'supportStaff',
@@ -177,7 +177,7 @@ const STEP_4_FIRM: StepDef = {
         },
         {
           name: 'procurement',
-          prompt: 'Technology procurement',
+          prompt: 'How does your firm decide which tech tools to buy?',
           kind: 'radio',
           required: false,
           cohorts: ['large'],
@@ -191,7 +191,7 @@ const STEP_4_FIRM: StepDef = {
         },
         {
           name: 'decision',
-          prompt: 'Tool-purchase decision-makers',
+          prompt: 'Who decides which tools the firm buys?',
           kind: 'checkbox',
           required: false,
           cohorts: ['small', 'medium'],
@@ -225,7 +225,7 @@ const STEP_4_FIRM: StepDef = {
         },
         {
           name: 'decisionSolo',
-          prompt: 'Tool purchase decision',
+          prompt: 'How do you decide which tools to use?',
           kind: 'radio',
           required: false,
           options: [
@@ -246,7 +246,7 @@ const STEP_5_PRACTICE_PROFILE: StepDef = {
   fields: [
     {
       name: 'language',
-      prompt: 'Languages of court work',
+      prompt: 'Which languages do you work in at court?',
       kind: 'checkbox',
       required: true,
       hasOther: true,
@@ -264,7 +264,7 @@ const STEP_5_PRACTICE_PROFILE: StepDef = {
     },
     {
       name: 'forum',
-      prompt: 'Courts and forums',
+      prompt: 'Which courts or forums do you appear in?',
       kind: 'checkbox',
       required: true,
       hasOther: true,
@@ -277,7 +277,7 @@ const STEP_5_PRACTICE_PROFILE: StepDef = {
         o('other-hc',          'Other High Court'),
         o('sc',                'Supreme Court'),
         o('district',          'District / Sessions'),
-        o('magistrate',        'Magistrate (CJM, JMFC)'),
+        o('magistrate',        'Magistrate'),
         o('nclt',              'NCLT / NCLAT'),
         o('itat',              'ITAT / GSTAT'),
         o('drt',               'DRT / DRAT'),
@@ -320,14 +320,14 @@ const STEP_5_PRACTICE_PROFILE: StepDef = {
         o('writ',           'Constitutional / Writ'),
         o('service',        'Service Matters'),
         o('consumer',       'Consumer Protection'),
-        o('cyber',          'Cyber / Data Protection'),
+        o('cyber',          'Cyber Crime / Data Protection'),
         o('white-collar',   'White-Collar (PMLA, FEMA)'),
         o('other-practice', 'Other'),
       ],
     },
     {
       name: 'clients',
-      prompt: 'Typical client mix',
+      prompt: 'Who are your typical clients?',
       kind: 'checkbox',
       required: true,
       options: [
@@ -351,7 +351,7 @@ const STEP_6_TOOLS: StepDef = {
   fields: [
     {
       name: 'research',
-      prompt: 'Research platforms',
+      prompt: 'Which research platforms do you use?',
       kind: 'checkbox',
       required: true,
       hasOther: true,
@@ -379,7 +379,7 @@ const STEP_6_TOOLS: StepDef = {
     },
     {
       name: 'drafting',
-      prompt: 'Primary drafting tools',
+      prompt: 'What do you use to draft documents?',
       kind: 'checkbox',
       required: true,
       hasOther: true,
@@ -398,7 +398,7 @@ const STEP_6_TOOLS: StepDef = {
     },
     {
       name: 'storage',
-      prompt: 'Document storage',
+      prompt: 'Where do you store your case documents?',
       kind: 'checkbox',
       required: true,
       hasOther: true,
@@ -420,7 +420,7 @@ const STEP_6_TOOLS: StepDef = {
     },
     {
       name: 'caseMgmt',
-      prompt: 'Case / practice management software',
+      prompt: 'Do you use any case-management software?',
       kind: 'radio',
       required: false,
       options: [
@@ -434,11 +434,11 @@ const STEP_6_TOOLS: StepDef = {
       prompt: 'If yes, which one?',
       kind: 'text',
       required: false,
-      placeholder: 'e.g. PracticePanther, LegalDesk',
+      placeholder: 'For example, PracticePanther, LegalDesk',
     },
     {
       name: 'efile',
-      prompt: 'E-filing systems',
+      prompt: 'Which e-filing portals do you use?',
       kind: 'checkbox',
       required: false,
       hasOther: true,
@@ -467,14 +467,14 @@ const STEP_7_PAIN: StepDef = {
   fields: [
     {
       name: 'painOpen',
-      prompt: 'Which tasks feel most repetitive or frustrating?',
+      prompt: 'Which parts of your work feel most repetitive or frustrating?',
       kind: 'textarea',
       required: true,
-      helper: 'A few examples. e.g. "drafting 138 NI notices over and over with only names and figures changing".',
+      helper: 'A few examples. **For example: "drafting 138 NI notices over and over with only names and figures changing".**',
     },
     {
       name: 'rankings',
-      prompt: 'Top 3 most time-consuming tasks',
+      prompt: 'Which 3 tasks take up the most of your time?',
       kind: 'rankings',
       required: true,
       helper: 'Tap to add in priority order; tap again to remove. Up to three.',
@@ -497,7 +497,7 @@ const STEP_7_PAIN: StepDef = {
     },
     {
       name: 'hurdle',
-      prompt: 'Biggest hurdles in your day-to-day work',
+      prompt: 'What gets in the way of your day-to-day work?',
       kind: 'checkbox',
       required: true,
       hasOther: true,
@@ -517,7 +517,7 @@ const STEP_7_PAIN: StepDef = {
     },
     {
       name: 'adminHours',
-      prompt: 'Hours per day on non-billable admin',
+      prompt: 'How many hours a day do you spend on admin work you cannot bill?',
       kind: 'radio',
       required: true,
       options: [
@@ -536,7 +536,7 @@ const STEP_8_AI: StepDef = {
   fields: [
     {
       name: 'aiUsage',
-      prompt: 'Current use of AI in legal work',
+      prompt: 'How often do you use AI in your legal work today?',
       kind: 'radio',
       required: true,
       options: [
@@ -550,7 +550,7 @@ const STEP_8_AI: StepDef = {
     },
     {
       name: 'aiTools',
-      prompt: 'AI tools used in the last 6 months',
+      prompt: 'Which AI tools have you used in the last 6 months?',
       kind: 'checkbox',
       required: false,
       hasOther: true,
@@ -578,12 +578,12 @@ const STEP_8_AI: StepDef = {
     },
     {
       name: 'stopReason',
-      prompt: 'Why did you stop or reduce usage?',
+      prompt: 'What made you stop or cut down on using AI?',
       kind: 'checkbox',
       required: false,
       hasOther: true,
       otherValue: 'other',
-      helper: 'Shown only if you tried AI but stopped or use it occasionally.',
+      helper: 'Based on what you actually experienced.',
       options: [
         o('hallucination',    'Hallucinated or fabricated citations'),
         o('outdated',         "Didn't reflect current Indian law"),
@@ -601,14 +601,14 @@ const STEP_8_AI: StepDef = {
     },
     {
       name: 'aiWants',
-      prompt: 'Which AI features would be most valuable to you?',
+      prompt: 'What would you most want an AI assistant to do for you?',
       kind: 'textarea',
       required: true,
-      helper: 'One or two sentences.',
+      helper: 'One or two sentences. **For example: "draft a first version of my 138 NI notices from a brief".**',
     },
     {
       name: 'aiWish',
-      prompt: 'A feature you wish existed but does not, in any tool',
+      prompt: 'Is there a feature you wish existed in any tool, but does not?',
       kind: 'textarea',
       required: false,
     },
@@ -698,25 +698,25 @@ const STEP_9_PRICING: StepDef = {
     // structure stays declarative.
     {
       name: 'spend',
-      prompt: 'Annual spend on research and drafting tools',
+      prompt: 'About how much does your practice spend each year on research and drafting tools?',
       kind: 'radio',
       required: true,
-      helper: 'Across all licences in your practice.',
+      helper: 'Across all licences combined.',
       options: [], // cohort-injected
     },
     {
       name: 'willPay',
-      prompt: 'Willingness to pay per user, per month (if AI saves 10 hrs/week)',
+      prompt: 'If an AI tool saved you about 10 hours a week, what would you pay per user per month?',
       kind: 'radio',
       required: true,
       options: [], // cohort-injected
     },
     {
       name: 'pricingModel',
-      prompt: 'Preferred pricing models',
+      prompt: 'Which pricing models would work for you?',
       kind: 'checkbox',
       required: true,
-      helper: 'Pick all that work for you.',
+      helper: 'Pick any that work.',
       options: [
         o('monthly',   'Monthly per user'),
         o('annual',    'Annual per user (with discount)'),
@@ -729,7 +729,7 @@ const STEP_9_PRICING: StepDef = {
     },
     {
       name: 'switching',
-      prompt: 'Switching conditions you would accept for a 60-day trial',
+      prompt: 'Under what conditions would you try a new tool for 60 days?',
       kind: 'checkbox',
       required: false,
       helper: 'Pick any that apply.',
@@ -751,12 +751,12 @@ const STEP_10_TRUST: StepDef = {
   fields: [
     {
       name: 'concern',
-      prompt: 'Biggest concerns about adopting AI',
+      prompt: 'Looking forward, what would hold you back from relying on AI in your practice?',
       kind: 'checkbox',
       required: true,
       hasOther: true,
       otherValue: 'other',
-      helper: 'Pick all that apply.',
+      helper: 'Pick all that apply. These are the worries that matter to you going forward, not past experience.',
       options: [
         o('hallucination',    'Hallucinated citations / court sanction'),
         o('confidentiality',  'Client confidentiality / privilege'),
@@ -773,7 +773,7 @@ const STEP_10_TRUST: StepDef = {
     },
     {
       name: 'dataLocation',
-      prompt: 'Where must your data be stored?',
+      prompt: 'Where do you need your client data to be stored?',
       kind: 'radio',
       required: true,
       options: [
@@ -786,7 +786,7 @@ const STEP_10_TRUST: StepDef = {
     },
     {
       name: 'recommended',
-      prompt: 'Likelihood to try AI on a colleague recommendation',
+      prompt: 'If a colleague you trust recommended an AI tool, how likely are you to try it?',
       kind: 'radio',
       required: true,
       options: [

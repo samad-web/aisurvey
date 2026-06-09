@@ -422,12 +422,40 @@ export function SurveyView() {
     return out;
   };
 
+  // Find the first visible-entry index whose fields include `fieldName`.
+  // Used to jump the user back to whichever question failed validation.
+  const findEntryIndexForField = (fieldName: string): number => {
+    for (let i = 0; i < visibleEntries.length; i++) {
+      if (visibleEntries[i]!.fields.some((f) => f.name === fieldName)) return i;
+    }
+    return -1;
+  };
+
   const submitPayload = async () => {
-    const errs = validateAllRequired(answers);
-    if (errs) {
-      setStepError(errs);
+    // Client-side: find the first missing/invalid required field across the
+    // whole survey. Jump there before showing the error so the user sees
+    // the actual question instead of a generic banner on the last screen.
+    const cohort = getCohort(answers);
+    for (let i = 0; i < visibleEntries.length; i++) {
+      const entry = visibleEntries[i]!;
+      const missing = firstMissingRequired(entry.fields, answers, otherTexts);
+      if (missing) {
+        if (i !== safeIndex) setCurrentIndex(i);
+        setStepError(missing);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+    }
+    // Belt-and-braces email shape — server still has the strict check.
+    const email = typeof answers.email === 'string' ? answers.email : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const idx = findEntryIndexForField('email');
+      if (idx >= 0 && idx !== safeIndex) setCurrentIndex(idx);
+      setStepError('Please enter a valid email.');
       return;
     }
+    void cohort; // silence unused-var; cohort context already implicit in firstMissingRequired
+
     setSubmitting(true);
     setSubmitError(null);
     setSubmitErrorDetails(null);
@@ -465,9 +493,20 @@ export function SurveyView() {
       const msg =
         data?.error
         ?? (err instanceof Error ? err.message : 'Submission failed. Please try again.');
+
+      // If the server returned per-field details, jump to the first
+      // affected question. The path is the top-level field name from the
+      // Zod schema (e.g. "spend", "concern", "phone").
+      const firstPath = data?.details?.find((d) => d.path)?.path;
+      if (firstPath) {
+        const topField = firstPath.split('.')[0]!;
+        const idx = findEntryIndexForField(topField);
+        if (idx >= 0 && idx !== safeIndex) setCurrentIndex(idx);
+      }
       setSubmitError(msg);
       setSubmitErrorDetails(data?.details ?? null);
       setSubmitting(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -598,19 +637,6 @@ export function SurveyView() {
             </span>
           </div>
 
-          {/* Eyebrow - deliberately omits the total step count so the
-              respondent doesn't see "X of N" upfront. */}
-          <div
-            className="mono"
-            style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center' }}
-          >
-            {submitted
-              ? 'COMPLETE · THANK YOU'
-              : isWelcome
-                ? 'WELCOME'
-                : `${(current?.fields.length ?? 1) > 1 ? 'STEP' : 'QUESTION'} ${safeIndex + 1} · ${current?.stepTitle.toUpperCase()}`}
-          </div>
-
           {/* Numbered pager - only the indices the user has actually reached
               are rendered, so the row grows as the survey progresses instead
               of revealing the total step count upfront. */}
@@ -626,6 +652,25 @@ export function SurveyView() {
 
         <main className="survey-body">
           <div className="card survey-card">
+            {/* Eyebrow lives inside the card so mobile viewports (which can
+                clip the top header) still show which question is on screen.
+                Deliberately omits the total step count. */}
+            <div
+              className="mono"
+              style={{
+                fontSize: 11,
+                color: 'var(--text-tertiary)',
+                marginBottom: 16,
+                letterSpacing: '0.04em',
+              }}
+            >
+              {submitted
+                ? 'COMPLETE · THANK YOU'
+                : isWelcome
+                  ? 'WELCOME'
+                  : `${(current?.fields.length ?? 1) > 1 ? 'STEP' : 'QUESTION'} ${safeIndex + 1} · ${current?.stepTitle.toUpperCase()}`}
+            </div>
+
             {isWelcome && !submitted && <Welcome onStart={goNext} />}
 
             {submitted && (
@@ -1009,7 +1054,7 @@ function FieldRow({
 
       {field.helper && (
         <p className="body-xs" style={{ marginTop: 6, color: 'var(--text-tertiary)' }}>
-          {field.helper}
+          {renderInlineBold(field.helper)}
         </p>
       )}
 
@@ -1487,6 +1532,18 @@ function ErrorBanner({ children }: { children: ReactNode }) {
 // =============================================================================
 // Helpers
 // =============================================================================
+
+// Tiny inline-bold parser for helper text. Supports **bold** segments only;
+// avoids pulling in a full markdown renderer. Splits the string into a flat
+// array of strings and <strong> nodes so React can render it inline.
+function renderInlineBold(s: string): ReactNode[] {
+  const parts = s.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((p, i) =>
+    p.startsWith('**') && p.endsWith('**')
+      ? <strong key={i}>{p.slice(2, -2)}</strong>
+      : <span key={i}>{p}</span>,
+  );
+}
 
 function fieldsForStep(step: StepDef, cohort: Cohort | null): Field[] {
   if (step.variants && step.variants.length > 0) {
