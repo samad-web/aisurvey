@@ -2554,8 +2554,11 @@ interface Respondent {
   email: string;
   phone: string;
   city: string;
-  barCouncil: string;
+  practitionerStatus: string | null;
+  barCouncil: string | null;
   barEnrollmentNumber: string | null;
+  institution: string | null;
+  course: string | null;
   role: string;
   years: string;
   firmSize: string;
@@ -2628,8 +2631,11 @@ function RespondentsLayout({ dashboardKey }: { dashboardKey: string }) {
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>Phone</th>
                   <th style={thStyle}>City</th>
+                  <th style={thStyle}>Status</th>
                   <th style={thStyle}>Bar Council</th>
                   <th style={thStyle}>Enrolment #</th>
+                  <th style={thStyle}>Institution</th>
+                  <th style={thStyle}>Course</th>
                   <th style={thStyle}>Role</th>
                   <th style={thStyle}>Years</th>
                   <th style={thStyle}>Firm size</th>
@@ -2638,7 +2644,7 @@ function RespondentsLayout({ dashboardKey }: { dashboardKey: string }) {
               </thead>
               <tbody>
                 {data.rows.length === 0 && (
-                  <tr><td colSpan={11} style={{ padding: 16, textAlign: 'center', color: 'var(--text-tertiary)' }}>No respondents yet.</td></tr>
+                  <tr><td colSpan={14} style={{ padding: 16, textAlign: 'center', color: 'var(--text-tertiary)' }}>No respondents yet.</td></tr>
                 )}
                 {data.rows.map((r) => (
                   <tr key={r.id}>
@@ -2647,8 +2653,11 @@ function RespondentsLayout({ dashboardKey }: { dashboardKey: string }) {
                     <td style={tdStyle}><a href={`mailto:${r.email}`}>{r.email}</a></td>
                     <td style={tdStyle}>{r.phone}</td>
                     <td style={tdStyle}>{r.city}</td>
-                    <td style={tdStyle}>{r.barCouncil}</td>
+                    <td style={tdStyle}>{r.practitionerStatus ?? '—'}</td>
+                    <td style={tdStyle}>{r.barCouncil ?? '—'}</td>
                     <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{r.barEnrollmentNumber ?? '—'}</td>
+                    <td style={tdStyle}>{r.institution ?? '—'}</td>
+                    <td style={tdStyle}>{r.course ?? '—'}</td>
                     <td style={tdStyle}>{r.role}</td>
                     <td style={tdStyle}>{r.years}</td>
                     <td style={tdStyle}>{r.firmSize}</td>

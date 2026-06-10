@@ -197,7 +197,7 @@ const OPTION_BY_FIELD: Map<string, Map<string, Option>> = (() => {
 
 // Multi-select fields that contain cohort-gated options. When firm size
 // changes we prune any selected option no longer valid for the new cohort.
-const COHORT_GATED_MULTIS = ['storage', 'rankings', 'hurdle', 'concern', 'pricingModel', 'switching'] as const;
+const COHORT_GATED_MULTIS = ['storage', 'rankings', 'hurdle', 'concern', 'pricingModel'] as const;
 
 export function SurveyView() {
   // Restore any in-progress draft from localStorage on first mount. We do

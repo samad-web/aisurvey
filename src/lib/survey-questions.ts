@@ -79,6 +79,16 @@ const STEP_2_CONTACT: StepDef = {
     { name: 'phone', prompt: 'Phone (WhatsApp preferred)',             kind: 'tel',   required: true, autocomplete: 'tel-national' },
     { name: 'city',  prompt: 'City or town',                           kind: 'text',  required: true, placeholder: 'e.g. Chennai, Madurai' },
     {
+      name: 'practitionerStatus',
+      prompt: 'Are you a law student or an enrolled advocate?',
+      kind: 'radio',
+      required: true,
+      options: [
+        o('enrolled', 'Enrolled advocate'),
+        o('student',  'Law student'),
+      ],
+    },
+    {
       name: 'barCouncil',
       prompt: 'State Bar Council of enrolment',
       kind: 'select',
@@ -99,6 +109,20 @@ const STEP_2_CONTACT: StepDef = {
       required: false,
       placeholder: 'For example, MAH/1234/2015',
       helper: 'Format varies by state. Leave blank if you would rather not share.',
+    },
+    {
+      name: 'institution',
+      prompt: 'Law school or institution',
+      kind: 'text',
+      required: true,
+      placeholder: 'e.g. NLSIU Bangalore',
+    },
+    {
+      name: 'course',
+      prompt: 'Course and year',
+      kind: 'text',
+      required: true,
+      placeholder: 'e.g. BA LLB, 4th year',
     },
   ],
 };
@@ -162,84 +186,19 @@ const STEP_4_FIRM: StepDef = {
   title: 'About your firm or chamber',
   variants: [
     {
-      cohorts: ['small', 'medium', 'large'],
+      cohorts: ['large'],
       fields: [
-        {
-          name: 'firmDepartments',
-          prompt: 'What are your main practice departments?',
-          kind: 'textarea',
-          required: false,
-          helper: 'List the top 2 or 3 by team size, separated by commas. For example, **Litigation, Corporate, Tax**.',
-        },
-        {
-          name: 'supportStaff',
-          prompt: 'Non-advocate support staff',
-          kind: 'radio',
-          required: false,
-          options: [
-            o('0',    '0'),
-            o('1-3',  '1 to 3'),
-            o('4-10', '4 to 10'),
-            o('10+',  'More than 10'),
-          ],
-        },
         {
           name: 'procurement',
           prompt: 'How does your firm decide which tech tools to buy?',
           kind: 'radio',
           required: false,
-          cohorts: ['large'],
           options: [
             o('central-it',      'Centralised - IT / Ops / KM lead evaluation'),
             o('practice-group',  'Practice-group-driven - each group buys'),
             o('rfp',             'Committee-based with formal RFP'),
             o('partner',         'Partner-by-partner discretionary'),
             o('dont-know',       "Don't know"),
-          ],
-        },
-        {
-          name: 'decision',
-          prompt: 'Who decides which tools the firm buys?',
-          kind: 'checkbox',
-          required: false,
-          cohorts: ['small', 'medium'],
-          options: [
-            o('managing-partner', 'Managing / Senior Partner only'),
-            o('committee',        "Partners' committee"),
-            o('each-partner',     'Each partner for their own team'),
-            o('practice-head',    'Practice group head'),
-            o('ops-finance',      'Operations / Finance manager'),
-            o('me',               'I do'),
-            o('dont-know',        "Don't know"),
-          ],
-        },
-      ],
-    },
-    {
-      cohorts: ['solo'],
-      fields: [
-        {
-          name: 'supportStaff',
-          prompt: 'Non-advocate support',
-          kind: 'radio',
-          required: false,
-          helper: 'Clerks, munshis, typists, paralegals.',
-          options: [
-            o('0',   '0'),
-            o('1-2', '1 to 2'),
-            o('3-5', '3 to 5'),
-            o('5+',  'More than 5'),
-          ],
-        },
-        {
-          name: 'decisionSolo',
-          prompt: 'How do you decide which tools to use?',
-          kind: 'radio',
-          required: false,
-          options: [
-            o('fully',   'I decide, fully'),
-            o('consult', 'I consult my senior first'),
-            o('follow',  'I generally use whatever my senior uses'),
           ],
         },
       ],
@@ -614,12 +573,6 @@ const STEP_8_AI: StepDef = {
       required: true,
       helper: 'One or two sentences. **For example: "draft a first version of my 138 NI notices from a brief".**',
     },
-    {
-      name: 'aiWish',
-      prompt: 'Is there a feature you wish existed in any tool, but does not?',
-      kind: 'textarea',
-      required: false,
-    },
   ],
 };
 
@@ -733,21 +686,6 @@ const STEP_9_PRICING: StepDef = {
         o('freemium',  'Freemium with paid premium'),
         o('tiered',    'Tiered (basic / pro / enterprise)'),
         o('one-time',  'One-time perpetual licence'),
-      ],
-    },
-    {
-      name: 'switching',
-      prompt: 'Under what conditions would you try a new tool for 60 days?',
-      kind: 'checkbox',
-      required: false,
-      helper: 'Pick any that apply.',
-      options: [
-        o('immediate',     'Yes, immediately'),
-        o('backup',        'Yes, with offline backup'),
-        o('parallel',      'Run both in parallel for a paid period'),
-        o('junior-first',  'Let a junior try first', ['small', 'medium', 'large']),
-        o('disruptive',    'No, too disruptive'),
-        o('trust-current', 'No, I trust my current tool'),
       ],
     },
   ],
@@ -890,6 +828,14 @@ export function isFieldVisible(field: Field, answers: Answers): boolean {
   // caseMgmtSpec only shown when caseMgmt = 'yes'.
   if (field.name === 'caseMgmtSpec') {
     return answers.caseMgmt === 'yes';
+  }
+
+  // Student vs enrolled-advocate branch in Step 2.
+  if (field.name === 'barCouncil' || field.name === 'barEnrollmentNumber') {
+    return answers.practitionerStatus !== 'student';
+  }
+  if (field.name === 'institution' || field.name === 'course') {
+    return answers.practitionerStatus === 'student';
   }
 
   return true;

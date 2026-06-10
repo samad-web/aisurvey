@@ -16,6 +16,7 @@ import { validate } from '../middleware/validate.js';
 // ---- Slug domains -----------------------------------------------------------
 
 const BarCouncil = z.enum(['tamil-nadu-puducherry','karnataka','andhra-pradesh','telangana','kerala','other']);
+const PractitionerStatus = z.enum(['enrolled','student']);
 const Role = z.enum([
   'designated-senior','senior-partner','partner','senior-associate','associate',
   'junior','solo-own','solo-under-senior','in-house','other',
@@ -158,25 +159,25 @@ const SurveyInput = z.object({
   email:                z.string().trim().email(),
   phone:                trimmed(4),
   city:                 trimmed(1),
-  barCouncil:           BarCouncil,
+  practitionerStatus:   PractitionerStatus,
+  barCouncil:           BarCouncil.optional(),   // required only when enrolled (superRefine)
   barEnrollmentNumber:  z
     .string()
     .trim()
     .max(64, 'Enrolment number is too long')
     .transform((v) => (v === '' ? undefined : v))
     .optional(),
+  institution:          z.string().trim().max(200).optional(),
+  course:               z.string().trim().max(200).optional(),
 
   // Step 3
   role:      Role,
   years:     Years,
   firmSize:  FirmSize,
 
-  // Step 4 (cohort-dependent - see superRefine below)
-  firmDepartments: optionalText,
-  supportStaff:    SupportStaff.optional(),
+  // Step 4 (cohort-dependent - see superRefine below). Only procurement
+  // survives the survey trim; the other Step-4 fields were dropped.
   procurement:     Procurement.optional(),
-  decision:        uniqueArray(Decision, { min: 1 }).optional(),
-  decisionSolo:    DecisionSolo.optional(),
 
   // Step 5
   language:  uniqueArray(Language, { min: 1 }),
@@ -203,13 +204,11 @@ const SurveyInput = z.object({
   aiTools:     uniqueArray(AiTools, { min: 1 }).optional(),
   stopReason:  uniqueArray(StopReason, { min: 1 }).optional(),
   aiWants:     trimmed(1),
-  aiWish:      optionalText,
 
   // Step 9
   spend:         Spend,
   willPay:       WillPay,
   pricingModel:  uniqueArray(PricingModel, { min: 1 }),
-  switching:     uniqueArray(Switching, { min: 1 }).optional(),
 
   // Step 10
   concern:       uniqueArray(Concern, { min: 1 }),
@@ -227,18 +226,36 @@ const SurveyInput = z.object({
 }).superRefine((v, ctx) => {
   const isFirm = v.firmSize === 'small' || v.firmSize === 'medium' || v.firmSize === 'large';
 
-  // Step 4 cohort gates ----------------------------------------------------
-  if (v.firmSize === 'solo' && v.firmDepartments !== undefined) {
-    ctx.addIssue({ code: 'custom', path: ['firmDepartments'], message: 'Solo cohort does not have firm departments.' });
+  // Step 2 student/enrolled branch -----------------------------------------
+  if (v.practitionerStatus === 'enrolled') {
+    if (!v.barCouncil) {
+      ctx.addIssue({ code: 'custom', path: ['barCouncil'], message: 'State Bar Council is required for enrolled advocates.' });
+    }
+    if (v.institution !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['institution'], message: 'Institution is only asked for students.' });
+    }
+    if (v.course !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['course'], message: 'Course is only asked for students.' });
+    }
+  } else {
+    // student
+    if (v.barCouncil !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['barCouncil'], message: 'State Bar Council is only asked for enrolled advocates.' });
+    }
+    if (v.barEnrollmentNumber !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['barEnrollmentNumber'], message: 'Bar enrolment number is only asked for enrolled advocates.' });
+    }
+    if (!v.institution || v.institution.trim() === '') {
+      ctx.addIssue({ code: 'custom', path: ['institution'], message: 'Institution is required for students.' });
+    }
+    if (!v.course || v.course.trim() === '') {
+      ctx.addIssue({ code: 'custom', path: ['course'], message: 'Course is required for students.' });
+    }
   }
+
+  // Step 4 cohort gates ----------------------------------------------------
   if (v.firmSize !== 'large' && v.procurement !== undefined) {
     ctx.addIssue({ code: 'custom', path: ['procurement'], message: 'Procurement workflow is asked only for large firms.' });
-  }
-  if (v.firmSize !== 'small' && v.firmSize !== 'medium' && v.decision !== undefined) {
-    ctx.addIssue({ code: 'custom', path: ['decision'], message: 'Decision-makers is asked only for small/medium firms.' });
-  }
-  if (v.firmSize !== 'solo' && v.decisionSolo !== undefined) {
-    ctx.addIssue({ code: 'custom', path: ['decisionSolo'], message: 'Solo decision is asked only for solo cohort.' });
   }
 
   // Step 6 caseMgmtSpec only when caseMgmt === 'yes'.
@@ -285,13 +302,6 @@ const SurveyInput = z.object({
   for (const slug of v.pricingModel) {
     if (PricingModelFirmOnly.has(slug) && !isFirm) {
       ctx.addIssue({ code: 'custom', path: ['pricingModel'], message: `"${slug}" pricing model is only available to firm cohorts.` });
-    }
-  }
-  if (v.switching) {
-    for (const slug of v.switching) {
-      if (SwitchingFirmOnly.has(slug) && !isFirm) {
-        ctx.addIssue({ code: 'custom', path: ['switching'], message: `"${slug}" switching option is only available to firm cohorts.` });
-      }
     }
   }
 

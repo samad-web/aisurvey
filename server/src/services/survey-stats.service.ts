@@ -550,8 +550,11 @@ export const surveyStatsService = {
       email: string;
       phone: string;
       city: string;
-      barCouncil: string;
+      practitionerStatus: string | null;
+      barCouncil: string | null;
       barEnrollmentNumber: string | null;
+      institution: string | null;
+      course: string | null;
       role: string;
       years: string;
       firmSize: string;
@@ -574,8 +577,11 @@ export const surveyStatsService = {
       email: string;
       phone: string;
       city: string;
-      bar_council: string;
+      practitioner_status: string | null;
+      bar_council: string | null;
       bar_enrollment_number: string | null;
+      institution: string | null;
+      course: string | null;
       role: string;
       years: string;
       firm_size: string;
@@ -584,7 +590,9 @@ export const surveyStatsService = {
     }>>`
       select
         id, submitted_at,
-        name, email, phone, city, bar_council, bar_enrollment_number,
+        name, email, phone, city,
+        practitioner_status, bar_council, bar_enrollment_number,
+        institution, course,
         role, years, firm_size,
         host(ip_address) as ip_address, user_agent
       from survey_responses
@@ -604,8 +612,11 @@ export const surveyStatsService = {
         email: r.email,
         phone: r.phone,
         city: r.city,
+        practitionerStatus: r.practitioner_status,
         barCouncil: r.bar_council,
         barEnrollmentNumber: r.bar_enrollment_number,
+        institution: r.institution,
+        course: r.course,
         role: r.role,
         years: r.years,
         firmSize: r.firm_size,
@@ -621,7 +632,8 @@ export const surveyStatsService = {
     const rows = await sql<Record<string, unknown>[]>`
       select
         id, submitted_at, host(ip_address) as ip_address, user_agent,
-        name, email, phone, city, bar_council, bar_enrollment_number,
+        name, email, phone, city,
+        practitioner_status, bar_council, bar_enrollment_number, institution, course,
         role, years, firm_size,
         firm_departments, support_staff, procurement, decision, decision_solo,
         language, forum, practice, clients,
