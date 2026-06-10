@@ -108,7 +108,6 @@ const STEP_2_CONTACT: StepDef = {
       kind: 'text',
       required: false,
       placeholder: 'For example, MAH/1234/2015',
-      helper: 'Format varies by state. Leave blank if you would rather not share.',
     },
     {
       name: 'institution',
@@ -830,9 +829,11 @@ export function isFieldVisible(field: Field, answers: Answers): boolean {
     return answers.caseMgmt === 'yes';
   }
 
-  // Student vs enrolled-advocate branch in Step 2.
+  // Student vs enrolled-advocate branch in Step 2. Bar fields appear only
+  // after 'enrolled' is explicitly chosen; institution/course only after
+  // 'student' is chosen. Before any pick, none of the four show.
   if (field.name === 'barCouncil' || field.name === 'barEnrollmentNumber') {
-    return answers.practitionerStatus !== 'student';
+    return answers.practitionerStatus === 'enrolled';
   }
   if (field.name === 'institution' || field.name === 'course') {
     return answers.practitionerStatus === 'student';
