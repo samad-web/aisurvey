@@ -18,7 +18,7 @@ export const surveyService = {
     const rows = await sql<{ id: string }[]>`
       insert into survey_responses (
         ip_address, user_agent,
-        name, email, phone, city, bar_council,
+        name, email, phone, city, bar_council, bar_enrollment_number,
         role, years, firm_size,
         firm_departments, support_staff, procurement, decision, decision_solo,
         language, forum, practice, clients,
@@ -32,7 +32,7 @@ export const surveyService = {
         idempotency_key
       ) values (
         ${meta.ipAddress}, ${meta.userAgent},
-        ${input.name}, ${input.email}, ${input.phone}, ${input.city}, ${input.barCouncil},
+        ${input.name}, ${input.email}, ${input.phone}, ${input.city}, ${input.barCouncil}, ${input.barEnrollmentNumber ?? null},
         ${input.role}, ${input.years}, ${input.firmSize},
         ${input.firmDepartments ?? null},
         ${input.supportStaff ?? null},

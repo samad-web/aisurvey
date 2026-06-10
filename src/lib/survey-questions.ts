@@ -92,6 +92,14 @@ const STEP_2_CONTACT: StepDef = {
         o('other',                 'Other'),
       ],
     },
+    {
+      name: 'barEnrollmentNumber',
+      prompt: 'Bar Council enrolment number (optional)',
+      kind: 'text',
+      required: false,
+      placeholder: 'For example, MAH/1234/2015',
+      helper: 'Format varies by state. Leave blank if you would rather not share.',
+    },
   ],
 };
 

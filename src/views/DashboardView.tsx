@@ -2555,6 +2555,7 @@ interface Respondent {
   phone: string;
   city: string;
   barCouncil: string;
+  barEnrollmentNumber: string | null;
   role: string;
   years: string;
   firmSize: string;
@@ -2628,6 +2629,7 @@ function RespondentsLayout({ dashboardKey }: { dashboardKey: string }) {
                   <th style={thStyle}>Phone</th>
                   <th style={thStyle}>City</th>
                   <th style={thStyle}>Bar Council</th>
+                  <th style={thStyle}>Enrolment #</th>
                   <th style={thStyle}>Role</th>
                   <th style={thStyle}>Years</th>
                   <th style={thStyle}>Firm size</th>
@@ -2636,7 +2638,7 @@ function RespondentsLayout({ dashboardKey }: { dashboardKey: string }) {
               </thead>
               <tbody>
                 {data.rows.length === 0 && (
-                  <tr><td colSpan={10} style={{ padding: 16, textAlign: 'center', color: 'var(--text-tertiary)' }}>No respondents yet.</td></tr>
+                  <tr><td colSpan={11} style={{ padding: 16, textAlign: 'center', color: 'var(--text-tertiary)' }}>No respondents yet.</td></tr>
                 )}
                 {data.rows.map((r) => (
                   <tr key={r.id}>
@@ -2646,6 +2648,7 @@ function RespondentsLayout({ dashboardKey }: { dashboardKey: string }) {
                     <td style={tdStyle}>{r.phone}</td>
                     <td style={tdStyle}>{r.city}</td>
                     <td style={tdStyle}>{r.barCouncil}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{r.barEnrollmentNumber ?? '—'}</td>
                     <td style={tdStyle}>{r.role}</td>
                     <td style={tdStyle}>{r.years}</td>
                     <td style={tdStyle}>{r.firmSize}</td>

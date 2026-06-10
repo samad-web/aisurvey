@@ -551,6 +551,7 @@ export const surveyStatsService = {
       phone: string;
       city: string;
       barCouncil: string;
+      barEnrollmentNumber: string | null;
       role: string;
       years: string;
       firmSize: string;
@@ -574,6 +575,7 @@ export const surveyStatsService = {
       phone: string;
       city: string;
       bar_council: string;
+      bar_enrollment_number: string | null;
       role: string;
       years: string;
       firm_size: string;
@@ -582,7 +584,7 @@ export const surveyStatsService = {
     }>>`
       select
         id, submitted_at,
-        name, email, phone, city, bar_council,
+        name, email, phone, city, bar_council, bar_enrollment_number,
         role, years, firm_size,
         host(ip_address) as ip_address, user_agent
       from survey_responses
@@ -603,6 +605,7 @@ export const surveyStatsService = {
         phone: r.phone,
         city: r.city,
         barCouncil: r.bar_council,
+        barEnrollmentNumber: r.bar_enrollment_number,
         role: r.role,
         years: r.years,
         firmSize: r.firm_size,
@@ -618,7 +621,7 @@ export const surveyStatsService = {
     const rows = await sql<Record<string, unknown>[]>`
       select
         id, submitted_at, host(ip_address) as ip_address, user_agent,
-        name, email, phone, city, bar_council,
+        name, email, phone, city, bar_council, bar_enrollment_number,
         role, years, firm_size,
         firm_departments, support_staff, procurement, decision, decision_solo,
         language, forum, practice, clients,

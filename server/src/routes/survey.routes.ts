@@ -154,11 +154,17 @@ const uniqueArray = <T extends z.ZodTypeAny>(
 
 const SurveyInput = z.object({
   // Step 2
-  name:        trimmed(1),
-  email:       z.string().trim().email(),
-  phone:       trimmed(4),
-  city:        trimmed(1),
-  barCouncil:  BarCouncil,
+  name:                 trimmed(1),
+  email:                z.string().trim().email(),
+  phone:                trimmed(4),
+  city:                 trimmed(1),
+  barCouncil:           BarCouncil,
+  barEnrollmentNumber:  z
+    .string()
+    .trim()
+    .max(64, 'Enrolment number is too long')
+    .transform((v) => (v === '' ? undefined : v))
+    .optional(),
 
   // Step 3
   role:      Role,
